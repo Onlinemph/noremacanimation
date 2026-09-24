@@ -58,9 +58,33 @@ void monsterState(int i, float t, out vec3 pos, out float yaw, out float run, ou
   yaw = atan(-dcam.x, dcam.y);
 }
 
+vec3 cPos[7]; float cYaw[7], cRun[7], cFall[7], cFar[7];
+void cacheMonsters(float t){
+  for (int i = 0; i < NM; i++){
+    vec3 pos; float yaw, run, fall;
+    monsterState(i, t, pos, yaw, run, fall);
+    cPos[i] = pos; cYaw[i] = yaw; cRun[i] = run; cFall[i] = fall;
+    cFar[i] = step(9., distance(pos.xz, gRo.xz));
+  }
+}
+// far LOD: capsule skeleton, same silhouette family as the crowd
+float cheapMonster(vec3 q, float run, float t, float seed){
+  float lean = mix(.38, .85, run);
+  vec3 hip = vec3(0., .9, 0.), sh = hip + vec3(0., .5 * cos(lean), .5 * sin(lean));
+  float d = sdTaper(q, hip, sh, .12, .17);
+  d = smin(d, sdSphere(q - sh - vec3(.08 * (hash11(seed) - .5), .16, .1), .1), .04);
+  float ph = t * mix(1.1, 6.2, run) + seed * 13.7;
+  for (int s = 0; s < 2; s++){
+    float sg = s == 0 ? -1. : 1.;
+    vec3 a = sh + vec3(.2 * sg, 0., 0.);
+    d = min(d, sdTaper(q, a, a + vec3(.05 * sg, -.7 + .4 * run, .2 + .4 * run * (.5 + .5 * sin(ph + sg))), .05, .03));
+    d = min(d, sdTaper(q, hip + vec3(.1 * sg, 0., 0.), vec3(.15 * sg, .05, .35 * run * sin(ph + (s == 0 ? 0. : PI))), .08, .05));
+  }
+  return d;
+}
+
 vec2 monsterSDF(vec3 p, int i, float t){
-  vec3 pos; float yaw, run, fall;
-  monsterState(i, t, pos, yaw, run, fall);
+  vec3 pos = cPos[i]; float yaw = cYaw[i], run = cRun[i], fall = cFall[i];
   vec3 mp = p - pos;
   if (length(mp.xz) > 2.6) return vec2(length(mp.xz) - 2.4, 0.);
   mp.xz *= rot2(yaw);
@@ -68,8 +92,9 @@ vec2 monsterSDF(vec3 p, int i, float t){
     mp.y -= .1 * abs(fall) / 1.55;
     mp = rotX(mp, fall);
   }
-  float b = sdCapsule(mp, vec3(0., .2, 0.), vec3(0., 2., 0.), 1.);
-  if (b > .2) return vec2(b, 0.);
+  float b = sdCapsule(mp, vec3(0., .25, 0.), vec3(0., 1.8, .3), .85);
+  if (b > .15) return vec2(b, 0.);
+  if (cFar[i] > .5) return vec2(cheapMonster(mp, run, t + float(i) * 3.1, mSeed(i)), M_CLOTH + .5);
   return sdMonster(mp, t + float(i) * 3.1, mSeed(i), run);
 }
 
@@ -226,8 +251,7 @@ float bloodPools(vec3 p, float t){
   for (int i = 0; i < NM; i++){
     float th = mHit(i);
     if (t < th + .3) continue;
-    vec3 pos; float yaw, run, fall;
-    monsterState(i, t, pos, yaw, run, fall);
+    vec3 pos = cPos[i];
     vec2 c = pos.xz + vec2(0., mKS(i) > .5 ? .8 : -.8);
     float r = .5 + .9 * smoothstep(0., 6., t - th);
     m = max(m, smoothstep(r, r * .6, length((p.xz - c) * vec2(1., .7)) + (fbm2(p.xz * 5.) - .5) * .4));
@@ -344,6 +368,7 @@ vec3 render(vec2 fc){
   gRo = vec3(.1 + .03 * sin(t * .9), 1.62 + .012 * sin(t * 5.3), 0.);
   vec3 ta = aimP + vec3(.08 * (noise2(vec2(t * 1.3, 2.)) - .5), .06 * (noise2(vec2(t * 1.1, 5.)) - .5) + rec * .5, 0.);
   vec3 rd = camRay(fc, gRo, ta, 1.3, .02 * sin(t * .7) - .04 * rec);
+  cacheMonsters(t);
   vec3 f = normalize(ta - gRo);
   vec3 rgt = normalize(cross(f, vec3(0., 1., 0.)));
   vec3 up = cross(rgt, f);
@@ -364,7 +389,7 @@ vec3 render(vec2 fc){
   float d = 0.; vec2 h = vec2(0.); bool hit = false;
   for (int i = 0; i < 120; i++){
     h = map(gRo + rd * d);
-    if (h.x < .0008 * (1. + d)){ hit = true; break; }
+    if (h.x < .0015 * (1. + d)){ hit = true; break; }
     d += h.x * .9;
     if (d > 40.) break;
   }

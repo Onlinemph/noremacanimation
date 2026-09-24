@@ -57,7 +57,7 @@ function leftGun(t) {
 export default {
   duration: 24,
   fps: 24,
-  sceneScale: 0.7,
+  sceneScale: 0.62,
 
   params(t) {
     const [ksFlash, recoil, pump] = ksState(t);

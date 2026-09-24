@@ -45,6 +45,7 @@ vec3 beaconAt(vec3 p, vec3 n){
   return BCOL * gBI * (320. * l0 / (q0 + 4.) + 120. * l1 / (q1 + 4.));
 }
 vec3 extraLight(vec3 p, vec3 n){ return beaconAt(p, n) * .5; }
+vec3 skyEnv(vec3 r){ float y = max(r.y, 0.); return vec3(.002, .003, .006) + vec3(.012, .016, .026) * exp(-y * 10.) + vec3(.01, .06, .03) * smoothstep(.1, .4, y) * smoothstep(.8, .4, y) * .6; }
 
 // >>> SNOCAT BEGIN (shared verbatim with s03_base)
 // ============================================================ vehicle state ===
@@ -332,7 +333,7 @@ vec3 shadeCat(vec3 ro, vec3 rd, vec3 rol, vec3 rdl, float tv, float mat, float t
   }
   vec3 R = reflect(rd, nw);
   float fres = .04 + .96 * pow(1. - max(dot(nw, V), 0.), 5.);
-  vec3 env = skyCol(R, t, gust) * 4. + poolE * pow(max(dot(R, dp / dd), 0.), rough) * .6;
+  vec3 env = skyEnv(R) * 4. + poolE * pow(max(dot(R, dp / dd), 0.), rough) * .6;
   col += env * fres * spec * ao;
   if (glass){
     // dark glass reflecting the sky, and the dome-lit cab behind it with the crew in silhouette
@@ -357,7 +358,7 @@ vec3 shadeCat(vec3 ro, vec3 rd, vec3 rol, vec3 rdl, float tv, float mat, float t
       inside = glow * (1.2 / (1. + dot(far - dome, far - dome) * 1.5)) + vec3(.01, .006, .003);
     }
     float gf = .05 + .95 * pow(1. - max(dot(nw, V), 0.), 5.);
-    col = inside * (1. - gf) + (skyCol(R, t, gust) * 3. + poolE * .15 * pow(max(dot(R, dp / dd), 0.), 8.)) * gf;
+    col = inside * (1. - gf) + (skyEnv(R) * 3. + poolE * .15 * pow(max(dot(R, dp / dd), 0.), 8.)) * gf;
     col += vec3(.02, .025, .03) * smoothstep(.55, .75, noise3(pl * 18.)) * .3;   // frost on the glass
   }
   return col;
@@ -543,23 +544,33 @@ const vec3 BB_MIN = vec3(-26., -1., 10.), BB_MAX = vec3(30., 9.5, 72.);
 vec2 mapBase(vec3 p, bool ground){
   vec2 r = vec2(ground ? (p.y - groundH(p.xz)) * .6 : 1e5, MS_SNOW);
   float m;
-  if (abs(p.x - PX) < 10. && p.z > PZ - 5.5 && p.z < PZ + 7. && p.y < 7.){
+  // every object is only evaluated when its bounding box is closer than what we already have
+  float bd = sdBox(p - vec3(PX, 3.2, PZ + 1.4), vec3(7.4, 3.3, 5.8));
+  if (bd < r.x){
     float d = portalSDF(p, m);
     if (d < r.x) r = vec2(d, m);
   }
-  if (p.x > 7. && p.y < 6.){
+  vec3 qa = modLocal(p, MODA, MODA_A);
+  bd = sdBox(qa - vec3(0., -1.6, 0.), vec3(1.9, 3.1, 8.8));
+  if (bd < r.x){
     float d = moduleSDF(p, MODA, 8.5, MODA_A, m);
     if (d < r.x) r = vec2(d, m);
-    d = moduleSDF(p, MODB, 9., MODB_A, m);
+  }
+  vec3 qb = modLocal(p, MODB, MODB_A);
+  bd = sdBox(qb - vec3(0., -1.6, 0.), vec3(1.9, 3.2, 9.3));
+  if (bd < r.x){
+    float d = moduleSDF(p, MODB, 9., MODB_A, m);
     if (d < r.x) r = vec2(d, m);
   }
-  if (abs(p.x - POST.x - .6) < 2.2 && abs(p.z - POST.z) < 1.){
+  bd = sdBox(p - POST - vec3(.7, 3.7, 0.), vec3(1.4, 3.8, .45));
+  if (bd < r.x){
     float d = postSDF(p);
     if (d < r.x) r = vec2(d, MS_POLE);
     d = lampHeadSDF(p);
     if (d < r.x) r = vec2(d, MS_LAMP);
   }
-  if (p.y < 1.3 && p.z > 21. && p.z < 25. && abs(p.x - PX) < 5.){
+  bd = sdBox(p - vec3(PX, .6, 23.), vec3(6.2, .7, 1.8));
+  if (bd < r.x){
     float d = drumSDF(p);
     if (d < r.x) r = vec2(d, MS_DRUM);
   }
@@ -590,12 +601,12 @@ float marchBase(vec3 ro, vec3 rd, float tmax, out float mat){
 float lampShadow(vec3 p, vec3 lp){
   vec3 d = lp - p; float L = length(d); d /= L;
   float res = 1., t = .15;
-  for (int i = 0; i < 16; i++){
+  for (int i = 0; i < 12; i++){
     vec3 x = p + d * t;
     if (x.z < BB_MIN.z) break;
     float h = mapBase(x, false).x;
     res = min(res, 10. * h / t);
-    t += clamp(h, .08, 1.5);
+    t += clamp(h, .12, 2.);
     if (res < .02 || t > L) break;
   }
   return clamp(res, 0., 1.);
@@ -770,8 +781,8 @@ vec3 render(vec2 fc){
   float tv = marchCat(rol, rdl, 60., matV);
   // base + drifts
   float matB;
-  float tb = marchBase(ro, rd, tv > 0. ? tv : 400., matB);
   float tPlane = rd.y < 0. ? -ro.y / rd.y : 1e4;
+  float tb = marchBase(ro, rd, min(tv > 0. ? tv : 400., tPlane + .01), matB);
 
   vec3 col;
   float tHit;
@@ -819,7 +830,7 @@ vec3 render(vec2 fc){
         float D = dot(lc - ro, rd);
         float Dl = max(length(ro + rd * D - lc), .05);
         float ta = atan((t0 - D) / Dl), tb2 = atan((t1 - D) / Dl);
-        const int NS = 10;
+        const int NS = 8;
         vec3 acc = vec3(0.);
         for (int i = 0; i < NS; i++){
           float u = (float(i) + dither) / float(NS);

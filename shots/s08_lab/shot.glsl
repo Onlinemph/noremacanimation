@@ -307,21 +307,27 @@ vec2 map(vec3 p){
   return r;
 }
 
+#define ZERO min(iFrame, 0)
+// normals/AO as non-unrollable loops: one inlined copy of the SDF each (SwiftShader cost is code-size bound)
 vec3 nrm(vec3 p){
-  const vec2 k = vec2(1., -1.);
-  const float e = .0015;
-  return normalize(k.xyy * map(p + k.xyy * e).x + k.yyx * map(p + k.yyx * e).x +
-                   k.yxy * map(p + k.yxy * e).x + k.xxx * map(p + k.xxx * e).x);
+  vec3 n = vec3(0.);
+  for (int i = ZERO; i < 4; i++){
+    vec3 e = .5773 * (2. * vec3(float(((i + 3) >> 1) & 1), float((i >> 1) & 1), float(i & 1)) - 1.);
+    n += e * map(p + e * .0015).x;
+  }
+  return normalize(n);
 }
-vec3 figNrm(int i, vec3 p){
-  const vec2 k = vec2(1., -1.);
-  const float e = .002;
-  return normalize(k.xyy * figMap(i, p + k.xyy * e).x + k.yyx * figMap(i, p + k.yyx * e).x +
-                   k.yxy * figMap(i, p + k.yxy * e).x + k.xxx * figMap(i, p + k.xxx * e).x);
+vec3 figNrm(int fi, vec3 p){
+  vec3 n = vec3(0.);
+  for (int i = ZERO; i < 4; i++){
+    vec3 e = .5773 * (2. * vec3(float(((i + 3) >> 1) & 1), float((i >> 1) & 1), float(i & 1)) - 1.);
+    n += e * figMap(fi, p + e * .002).x;
+  }
+  return normalize(n);
 }
 float calcAO(vec3 p, vec3 n){
   float o = 0., s = 1.;
-  for (int i = 0; i < 2; i++){
+  for (int i = ZERO; i < 2; i++){
     float h = .03 + .12 * float(i);
     o += (h - map(p + n * h).x) * s; s *= .6;
   }
@@ -758,7 +764,7 @@ vec3 render(vec2 fc){
     else n = nrm(ro + rd * d);
     vec3 p = ro + rd * d;
     col = shadeScene(h, p, n, rd);
-    
+    col *= mix(.3, 1., calcAO(p, n));
     col *= exp(-max(d - 4., 0.) * .25);
   }
 

@@ -34,6 +34,8 @@ vec3 skyCol(vec3 rd, float t, float gust){
 }
 
 vec3 extraLight(vec3 p, vec3 n){ return vec3(0.); }
+// cheap sky for reflections: dark zenith, blowing-snow haze at the horizon, a hint of aurora
+vec3 skyEnv(vec3 r){ float y = max(r.y, 0.); return vec3(.002, .003, .006) + vec3(.014, .019, .03) * exp(-y * 9.) + vec3(.01, .05, .03) * smoothstep(.1, .4, y) * smoothstep(.8, .4, y) * .5; }
 
 // >>> SNOCAT BEGIN (shared verbatim with s03_base)
 // ============================================================ vehicle state ===
@@ -321,7 +323,7 @@ vec3 shadeCat(vec3 ro, vec3 rd, vec3 rol, vec3 rdl, float tv, float mat, float t
   }
   vec3 R = reflect(rd, nw);
   float fres = .04 + .96 * pow(1. - max(dot(nw, V), 0.), 5.);
-  vec3 env = skyCol(R, t, gust) * 4. + poolE * pow(max(dot(R, dp / dd), 0.), rough) * .6;
+  vec3 env = skyEnv(R) * 4. + poolE * pow(max(dot(R, dp / dd), 0.), rough) * .6;
   col += env * fres * spec * ao;
   if (glass){
     // dark glass reflecting the sky, and the dome-lit cab behind it with the crew in silhouette
@@ -346,7 +348,7 @@ vec3 shadeCat(vec3 ro, vec3 rd, vec3 rol, vec3 rdl, float tv, float mat, float t
       inside = glow * (1.2 / (1. + dot(far - dome, far - dome) * 1.5)) + vec3(.01, .006, .003);
     }
     float gf = .05 + .95 * pow(1. - max(dot(nw, V), 0.), 5.);
-    col = inside * (1. - gf) + (skyCol(R, t, gust) * 3. + poolE * .15 * pow(max(dot(R, dp / dd), 0.), 8.)) * gf;
+    col = inside * (1. - gf) + (skyEnv(R) * 3. + poolE * .15 * pow(max(dot(R, dp / dd), 0.), 8.)) * gf;
     col += vec3(.02, .025, .03) * smoothstep(.55, .75, noise3(pl * 18.)) * .3;   // frost on the glass
   }
   return col;
