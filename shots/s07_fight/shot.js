@@ -49,9 +49,9 @@ export default {
     const akFlashEnv = burstEnv(t, AK, 62);
     const ppshFlashEnv = burstEnv(t, PPSH, 85);
     const flareProgress = t < FLARE_LAUNCH ? 0 : Math.min(1, (t - FLARE_LAUNCH) / (FLARE_LAND - FLARE_LAUNCH));
-    const landedRamp = Math.min(1, Math.max(0, (t - FLARE_LAND) / .3));
-    const flareGroundPulse = t < FLARE_LAND ? 0 : landedRamp * (.6 + .4 * Math.sin((t - FLARE_LAND) * 6.0));
-    const revealEnv = Math.min(1, Math.max(0, (t - FLARE_LAND) / 1.5));
+    const landedRamp = Math.min(1, Math.max(0, (t - FLARE_LAND) / .12));
+    const flareGroundPulse = t < FLARE_LAND ? 0 : landedRamp * (.75 + .25 * Math.sin((t - FLARE_LAND) * 6.0));
+    const revealEnv = Math.min(1, Math.max(0, (t - FLARE_LAND) / .6));
     const turnFlash = pulse(t, TURN_T, .05, .1, .4);
     return [recoilEnv, pumpEnv, muzzleFlashEnv, pointBlankEnv, akFlashEnv, ppshFlashEnv, flareProgress, flareGroundPulse, revealEnv, turnFlash];
   },
