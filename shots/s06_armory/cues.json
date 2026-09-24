@@ -1,0 +1,196 @@
+{
+  "ambience": "interior_dead",
+  "cues": [
+    {
+      "t": 0.15,
+      "type": "metal_clang",
+      "gain": 0.8
+    },
+    {
+      "t": 4.5,
+      "type": "pump_rack",
+      "gain": 1.0
+    },
+    {
+      "t": 6.0,
+      "type": "music_hit",
+      "gain": 0.9
+    },
+    {
+      "t": 6.0,
+      "type": "impact",
+      "gain": 0.5
+    },
+    {
+      "t": 6.35,
+      "type": "typewriter_key",
+      "gain": 0.6
+    },
+    {
+      "t": 6.49,
+      "type": "typewriter_key",
+      "gain": 0.6
+    },
+    {
+      "t": 6.63,
+      "type": "typewriter_key",
+      "gain": 0.6
+    },
+    {
+      "t": 6.77,
+      "type": "typewriter_key",
+      "gain": 0.6
+    },
+    {
+      "t": 6.91,
+      "type": "typewriter_key",
+      "gain": 0.6
+    },
+    {
+      "t": 8.4,
+      "type": "music_hit",
+      "gain": 0.9
+    },
+    {
+      "t": 8.4,
+      "type": "impact",
+      "gain": 0.5
+    },
+    {
+      "t": 8.75,
+      "type": "typewriter_key",
+      "gain": 0.6
+    },
+    {
+      "t": 8.89,
+      "type": "typewriter_key",
+      "gain": 0.6
+    },
+    {
+      "t": 9.03,
+      "type": "typewriter_key",
+      "gain": 0.6
+    },
+    {
+      "t": 9.17,
+      "type": "typewriter_key",
+      "gain": 0.6
+    },
+    {
+      "t": 9.31,
+      "type": "typewriter_key",
+      "gain": 0.6
+    },
+    {
+      "t": 9.4,
+      "type": "shriek",
+      "gain": 0.7,
+      "dur": 1.2
+    },
+    {
+      "t": 10.8,
+      "type": "music_hit",
+      "gain": 0.9
+    },
+    {
+      "t": 10.8,
+      "type": "impact",
+      "gain": 0.5
+    },
+    {
+      "t": 11.15,
+      "type": "typewriter_key",
+      "gain": 0.6
+    },
+    {
+      "t": 11.29,
+      "type": "typewriter_key",
+      "gain": 0.6
+    },
+    {
+      "t": 11.43,
+      "type": "typewriter_key",
+      "gain": 0.6
+    },
+    {
+      "t": 11.57,
+      "type": "typewriter_key",
+      "gain": 0.6
+    },
+    {
+      "t": 11.71,
+      "type": "typewriter_key",
+      "gain": 0.6
+    },
+    {
+      "t": 13.2,
+      "type": "music_hit",
+      "gain": 0.9
+    },
+    {
+      "t": 13.2,
+      "type": "impact",
+      "gain": 0.5
+    },
+    {
+      "t": 13.55,
+      "type": "typewriter_key",
+      "gain": 0.6
+    },
+    {
+      "t": 13.69,
+      "type": "typewriter_key",
+      "gain": 0.6
+    },
+    {
+      "t": 13.83,
+      "type": "typewriter_key",
+      "gain": 0.6
+    },
+    {
+      "t": 13.97,
+      "type": "typewriter_key",
+      "gain": 0.6
+    },
+    {
+      "t": 14.11,
+      "type": "typewriter_key",
+      "gain": 0.6
+    },
+    {
+      "t": 15.6,
+      "type": "music_hit",
+      "gain": 0.9
+    },
+    {
+      "t": 15.6,
+      "type": "impact",
+      "gain": 0.5
+    },
+    {
+      "t": 15.95,
+      "type": "typewriter_key",
+      "gain": 0.6
+    },
+    {
+      "t": 16.09,
+      "type": "typewriter_key",
+      "gain": 0.6
+    },
+    {
+      "t": 16.23,
+      "type": "typewriter_key",
+      "gain": 0.6
+    },
+    {
+      "t": 16.37,
+      "type": "typewriter_key",
+      "gain": 0.6
+    },
+    {
+      "t": 16.51,
+      "type": "typewriter_key",
+      "gain": 0.6
+    }
+  ]
+}

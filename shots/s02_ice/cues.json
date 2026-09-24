@@ -1,0 +1,15 @@
+{
+  "ambience": "blizzard",
+  "cues": [
+    { "t": 0.0, "type": "engine_idle", "gain": 0.08, "dur": 3.8 },
+    { "t": 1.8, "type": "wind_gust", "gain": 0.7, "dur": 1.6 },
+    { "t": 3.8, "type": "engine_idle", "gain": 0.28, "dur": 3.0 },
+    { "t": 5.6, "type": "wind_gust", "gain": 0.85, "dur": 1.8 },
+    { "t": 6.8, "type": "engine_rev", "gain": 0.5, "dur": 1.6 },
+    { "t": 8.4, "type": "engine_rev", "gain": 0.85, "dur": 1.4 },
+    { "t": 9.3, "type": "whoosh", "gain": 0.6, "dur": 0.8 },
+    { "t": 9.6, "type": "wind_gust", "gain": 0.9, "dur": 1.4 },
+    { "t": 9.8, "type": "engine_idle", "gain": 0.6, "dur": 2.0 },
+    { "t": 11.0, "type": "engine_idle", "gain": 0.3, "dur": 1.0 }
+  ]
+}

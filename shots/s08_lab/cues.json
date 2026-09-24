@@ -1,0 +1,17 @@
+{
+  "ambience": "interior_hum",
+  "cues": [
+    { "t": 0.0, "type": "liquid_splash", "gain": 0.35, "dur": 13.0 },
+    { "t": 1.5, "type": "heartbeat", "gain": 0.4, "dur": 9.0 },
+    { "t": 7.6, "type": "growl", "gain": 0.5 },
+    { "t": 8.4, "type": "glass_break", "gain": 0.3 },
+    { "t": 9.0, "type": "glass_break", "gain": 0.4 },
+    { "t": 9.6, "type": "glass_break", "gain": 0.55 },
+    { "t": 10.0, "type": "heartbeat", "gain": 0.7 },
+    { "t": 10.2, "type": "tank_burst", "gain": 1.0 },
+    { "t": 10.2, "type": "shriek", "gain": 1.0 },
+    { "t": 10.25, "type": "stinger", "gain": 1.0 },
+    { "t": 10.3, "type": "body_fall", "gain": 0.4 },
+    { "t": 11.2, "type": "impact", "gain": 0.3 }
+  ]
+}

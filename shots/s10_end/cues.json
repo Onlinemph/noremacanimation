@@ -1,0 +1,121 @@
+{
+  "ambience": "none",
+  "cues": [
+    {
+      "t": 0,
+      "type": "wind_gust",
+      "gain": 0.6,
+      "dur": 7
+    },
+    {
+      "t": 0,
+      "type": "engine_idle",
+      "gain": 0.7,
+      "dur": 4
+    },
+    {
+      "t": 0.3,
+      "type": "explosion",
+      "gain": 0.85,
+      "dur": 1.8
+    },
+    {
+      "t": 4,
+      "type": "engine_idle",
+      "gain": 0.3,
+      "dur": 3
+    },
+    {
+      "t": 7.3,
+      "type": "radio_static",
+      "gain": 0.5,
+      "dur": 5.3
+    },
+    {
+      "t": 7.4,
+      "type": "radio_signal",
+      "gain": 0.7
+    },
+    {
+      "t": 7.65,
+      "type": "radio_signal",
+      "gain": 0.7
+    },
+    {
+      "t": 7.85,
+      "type": "radio_signal",
+      "gain": 0.7
+    },
+    {
+      "t": 8.25,
+      "type": "radio_signal",
+      "gain": 0.7
+    },
+    {
+      "t": 8.75,
+      "type": "radio_signal",
+      "gain": 0.7
+    },
+    {
+      "t": 8.95,
+      "type": "radio_signal",
+      "gain": 0.7
+    },
+    {
+      "t": 9.8,
+      "type": "radio_signal",
+      "gain": 0.7
+    },
+    {
+      "t": 10.05,
+      "type": "radio_signal",
+      "gain": 0.7
+    },
+    {
+      "t": 10.25,
+      "type": "radio_signal",
+      "gain": 0.7
+    },
+    {
+      "t": 10.65,
+      "type": "radio_signal",
+      "gain": 0.7
+    },
+    {
+      "t": 11.15,
+      "type": "radio_signal",
+      "gain": 0.7
+    },
+    {
+      "t": 11.2,
+      "type": "stinger",
+      "gain": 1
+    },
+    {
+      "t": 11.35,
+      "type": "radio_signal",
+      "gain": 0.7
+    },
+    {
+      "t": 12.2,
+      "type": "radio_signal",
+      "gain": 0.7
+    },
+    {
+      "t": 12.45,
+      "type": "radio_signal",
+      "gain": 0.7
+    },
+    {
+      "t": 12.65,
+      "type": "radio_signal",
+      "gain": 0.7
+    },
+    {
+      "t": 13,
+      "type": "music_hit",
+      "gain": 1,
+      "dur": 2
+    }
+  ]
+}

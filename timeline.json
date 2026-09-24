@@ -1,0 +1,17 @@
+{
+  "fps": 24,
+  "width": 1280,
+  "height": 720,
+  "shots": [
+    {"name": "s01_signal",   "start": 0,   "duration": 12},
+    {"name": "s02_ice",      "start": 12,  "duration": 12},
+    {"name": "s03_base",     "start": 24,  "duration": 10},
+    {"name": "s04_airlock",  "start": 34,  "duration": 10},
+    {"name": "s05_corridor", "start": 44,  "duration": 14},
+    {"name": "s06_armory",   "start": 58,  "duration": 18},
+    {"name": "s07_fight",    "start": 76,  "duration": 24},
+    {"name": "s08_lab",      "start": 100, "duration": 13},
+    {"name": "s09_escape",   "start": 113, "duration": 18},
+    {"name": "s10_end",      "start": 131, "duration": 15}
+  ]
+}

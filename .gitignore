@@ -1,0 +1,4 @@
+build/*
+!build/OBJECT9.mp4
+node_modules/
+__pycache__/

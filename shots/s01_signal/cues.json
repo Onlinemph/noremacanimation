@@ -1,0 +1,458 @@
+{
+  "ambience": "none",
+  "cues": [
+    {
+      "t": 0.314,
+      "type": "typewriter_key",
+      "gain": 0.79
+    },
+    {
+      "t": 0.349,
+      "type": "typewriter_key",
+      "gain": 0.75
+    },
+    {
+      "t": 0.4,
+      "type": "typewriter_key",
+      "gain": 0.74
+    },
+    {
+      "t": 0.44,
+      "type": "typewriter_key",
+      "gain": 0.79
+    },
+    {
+      "t": 0.476,
+      "type": "typewriter_key",
+      "gain": 0.82
+    },
+    {
+      "t": 0.531,
+      "type": "typewriter_key",
+      "gain": 0.84
+    },
+    {
+      "t": 0.559,
+      "type": "typewriter_key",
+      "gain": 0.89
+    },
+    {
+      "t": 0.609,
+      "type": "typewriter_key",
+      "gain": 0.78
+    },
+    {
+      "t": 0.655,
+      "type": "typewriter_key",
+      "gain": 0.69
+    },
+    {
+      "t": 0.692,
+      "type": "typewriter_key",
+      "gain": 0.68
+    },
+    {
+      "t": 0.722,
+      "type": "typewriter_key",
+      "gain": 0.77
+    },
+    {
+      "t": 0.747,
+      "type": "typewriter_key",
+      "gain": 0.89
+    },
+    {
+      "t": 0.808,
+      "type": "typewriter_key",
+      "gain": 0.66
+    },
+    {
+      "t": 0.843,
+      "type": "typewriter_key",
+      "gain": 0.67
+    },
+    {
+      "t": 0.871,
+      "type": "typewriter_key",
+      "gain": 0.78
+    },
+    {
+      "t": 0.904,
+      "type": "typewriter_key",
+      "gain": 0.78
+    },
+    {
+      "t": 0.948,
+      "type": "typewriter_key",
+      "gain": 0.87
+    },
+    {
+      "t": 0.97,
+      "type": "typewriter_key",
+      "gain": 0.71
+    },
+    {
+      "t": 1.001,
+      "type": "typewriter_key",
+      "gain": 0.88
+    },
+    {
+      "t": 1.055,
+      "type": "typewriter_key",
+      "gain": 0.7
+    },
+    {
+      "t": 1.11,
+      "type": "typewriter_key",
+      "gain": 0.66
+    },
+    {
+      "t": 1.167,
+      "type": "typewriter_key",
+      "gain": 0.81
+    },
+    {
+      "t": 1.224,
+      "type": "typewriter_key",
+      "gain": 0.8
+    },
+    {
+      "t": 1.274,
+      "type": "typewriter_key",
+      "gain": 0.73
+    },
+    {
+      "t": 1.341,
+      "type": "typewriter_key",
+      "gain": 0.73
+    },
+    {
+      "t": 1.378,
+      "type": "typewriter_key",
+      "gain": 0.89
+    },
+    {
+      "t": 1.427,
+      "type": "typewriter_key",
+      "gain": 0.74
+    },
+    {
+      "t": 1.493,
+      "type": "typewriter_key",
+      "gain": 0.68
+    },
+    {
+      "t": 1.541,
+      "type": "typewriter_key",
+      "gain": 0.82
+    },
+    {
+      "t": 1.59,
+      "type": "typewriter_key",
+      "gain": 0.6
+    },
+    {
+      "t": 1.638,
+      "type": "typewriter_key",
+      "gain": 0.64
+    },
+    {
+      "t": 1.662,
+      "type": "typewriter_key",
+      "gain": 0.76
+    },
+    {
+      "t": 1.72,
+      "type": "typewriter_key",
+      "gain": 0.65
+    },
+    {
+      "t": 1.963,
+      "type": "typewriter_key",
+      "gain": 0.86
+    },
+    {
+      "t": 1.993,
+      "type": "typewriter_key",
+      "gain": 0.82
+    },
+    {
+      "t": 2.049,
+      "type": "typewriter_key",
+      "gain": 0.75
+    },
+    {
+      "t": 2.085,
+      "type": "typewriter_key",
+      "gain": 0.77
+    },
+    {
+      "t": 2.141,
+      "type": "typewriter_key",
+      "gain": 0.72
+    },
+    {
+      "t": 2.185,
+      "type": "typewriter_key",
+      "gain": 0.6
+    },
+    {
+      "t": 2.229,
+      "type": "typewriter_key",
+      "gain": 0.86
+    },
+    {
+      "t": 2.271,
+      "type": "typewriter_key",
+      "gain": 0.64
+    },
+    {
+      "t": 2.319,
+      "type": "typewriter_key",
+      "gain": 0.78
+    },
+    {
+      "t": 2.373,
+      "type": "typewriter_key",
+      "gain": 0.65
+    },
+    {
+      "t": 2.428,
+      "type": "typewriter_key",
+      "gain": 0.82
+    },
+    {
+      "t": 2.494,
+      "type": "typewriter_key",
+      "gain": 0.82
+    },
+    {
+      "t": 2.561,
+      "type": "typewriter_key",
+      "gain": 0.79
+    },
+    {
+      "t": 2.591,
+      "type": "typewriter_key",
+      "gain": 0.88
+    },
+    {
+      "t": 2.636,
+      "type": "typewriter_key",
+      "gain": 0.75
+    },
+    {
+      "t": 2.686,
+      "type": "typewriter_key",
+      "gain": 0.82
+    },
+    {
+      "t": 2.716,
+      "type": "typewriter_key",
+      "gain": 0.62
+    },
+    {
+      "t": 2.77,
+      "type": "typewriter_key",
+      "gain": 0.83
+    },
+    {
+      "t": 2.813,
+      "type": "typewriter_key",
+      "gain": 0.86
+    },
+    {
+      "t": 2.853,
+      "type": "typewriter_key",
+      "gain": 0.77
+    },
+    {
+      "t": 2.911,
+      "type": "typewriter_key",
+      "gain": 0.86
+    },
+    {
+      "t": 2.938,
+      "type": "typewriter_key",
+      "gain": 0.9
+    },
+    {
+      "t": 2.992,
+      "type": "typewriter_key",
+      "gain": 0.77
+    },
+    {
+      "t": 3.049,
+      "type": "typewriter_key",
+      "gain": 0.75
+    },
+    {
+      "t": 3.286,
+      "type": "typewriter_key",
+      "gain": 0.68
+    },
+    {
+      "t": 3.343,
+      "type": "typewriter_key",
+      "gain": 0.74
+    },
+    {
+      "t": 3.381,
+      "type": "typewriter_key",
+      "gain": 0.65
+    },
+    {
+      "t": 3.427,
+      "type": "typewriter_key",
+      "gain": 0.8
+    },
+    {
+      "t": 3.451,
+      "type": "typewriter_key",
+      "gain": 0.65
+    },
+    {
+      "t": 3.474,
+      "type": "typewriter_key",
+      "gain": 0.86
+    },
+    {
+      "t": 3.5,
+      "type": "drone_swell",
+      "gain": 0.5,
+      "dur": 1.4
+    },
+    {
+      "t": 3.511,
+      "type": "typewriter_key",
+      "gain": 0.89
+    },
+    {
+      "t": 3.541,
+      "type": "typewriter_key",
+      "gain": 0.76
+    },
+    {
+      "t": 3.591,
+      "type": "typewriter_key",
+      "gain": 0.9
+    },
+    {
+      "t": 3.641,
+      "type": "typewriter_key",
+      "gain": 0.67
+    },
+    {
+      "t": 3.681,
+      "type": "typewriter_key",
+      "gain": 0.89
+    },
+    {
+      "t": 4.4,
+      "type": "radio_static",
+      "gain": 0.55,
+      "dur": 7.6
+    },
+    {
+      "t": 4.9,
+      "type": "radio_signal",
+      "gain": 0.7
+    },
+    {
+      "t": 5.15,
+      "type": "radio_signal",
+      "gain": 0.7
+    },
+    {
+      "t": 5.35,
+      "type": "radio_signal",
+      "gain": 0.7
+    },
+    {
+      "t": 5.75,
+      "type": "radio_signal",
+      "gain": 0.7
+    },
+    {
+      "t": 6.25,
+      "type": "radio_signal",
+      "gain": 0.7
+    },
+    {
+      "t": 6.45,
+      "type": "radio_signal",
+      "gain": 0.7
+    },
+    {
+      "t": 7.3,
+      "type": "radio_signal",
+      "gain": 0.7
+    },
+    {
+      "t": 7.55,
+      "type": "radio_signal",
+      "gain": 0.7
+    },
+    {
+      "t": 7.75,
+      "type": "radio_signal",
+      "gain": 0.7
+    },
+    {
+      "t": 8.15,
+      "type": "radio_signal",
+      "gain": 0.7
+    },
+    {
+      "t": 8.65,
+      "type": "radio_signal",
+      "gain": 0.7
+    },
+    {
+      "t": 8.85,
+      "type": "radio_signal",
+      "gain": 0.7
+    },
+    {
+      "t": 9.4,
+      "type": "stinger",
+      "gain": 1
+    },
+    {
+      "t": 9.7,
+      "type": "radio_signal",
+      "gain": 0.7
+    },
+    {
+      "t": 9.95,
+      "type": "radio_signal",
+      "gain": 0.7
+    },
+    {
+      "t": 10.15,
+      "type": "radio_signal",
+      "gain": 0.7
+    },
+    {
+      "t": 10.55,
+      "type": "radio_signal",
+      "gain": 0.7
+    },
+    {
+      "t": 11.05,
+      "type": "radio_signal",
+      "gain": 0.7
+    },
+    {
+      "t": 11.25,
+      "type": "radio_signal",
+      "gain": 0.7
+    },
+    {
+      "t": 11.5,
+      "type": "drone_swell",
+      "gain": 0.3,
+      "dur": 0.5
+    }
+  ]
+}
