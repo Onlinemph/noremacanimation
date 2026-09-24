@@ -225,31 +225,38 @@ vec2 sdMonster(vec3 p, float t, float seed, float run){
 
   // ---------------- head: long skull, eye sockets, jaw unhinged far too low
   float jawDrop = .07 + .07 * run + .03 * spasm;
-  float skull = sdEllipsoid(hq - vec3(0., .025, -.015), vec3(.072, .095, .09));
-  // brow ridge, cheekbones, sunken temples, narrow chin
-  skull = smin(skull, sdCapsule(hq, vec3(-.04, .042, .072), vec3(.04, .042, .072), .008), .02);
-  skull = smin(skull, sdEllipsoid(vec3(abs(hq.x) - .046, hq.y + .008, hq.z - .045), vec3(.013, .009, .022)), .012);
-  skull = smax(skull, -sdSphere(vec3(abs(hq.x) - .085, hq.y - .03, hq.z - .03), .03), .02);
-  vec3 jq = hq - vec3(0., -.06 - jawDrop * .55, .035);
-  float jaw = sdEllipsoid(jq, vec3(.048, .028 + jawDrop * .5, .052));
-  float mouth = sdEllipsoid(hq - vec3(0., -.062 - jawDrop * .45, .07), vec3(.036, .018 + jawDrop * .48, .05));
-  float head = smin(skull, jaw, .02);
-  head = smax(head, -mouth, .005);
-  vec3 eq = vec3(abs(hq.x) - .031, hq.y - .016, hq.z - .066);
-  head = smax(head, -sdSphere(eq, .024), .005);
-  head = smax(head, -sdEllipsoid(hq - vec3(0., -.018, .088), vec3(.011, .017, .02)), .004);   // nasal cavity
-  // cheek tears
-  head = smax(head, -sdEllipsoid(vec3(abs(hq.x) - .042, hq.y + .045, hq.z - .05), vec3(.008, .04, .03)), .004);
-  float eyes = sdSphere(eq + vec3(0., 0., .012), .0045);   // tiny milky pupils deep in the sockets
-  // teeth: inward-pointing spikes lining the mouth cavity, clipped to the head volume
-  vec3 tq = hq - vec3(0., -.062 - jawDrop * .45, .07);
-  vec2 trad = vec2(.036, .018 + jawDrop * .48);
-  float tr = length(tq.xy / trad);
-  float ta = atan(tq.x, tq.y);
-  float rin = .72 + .22 * abs(sin(ta * 9.));
-  float teeth = max(rin - tr, tr - 1.05) * min(trad.x, trad.y);
-  teeth = max(teeth, smin(skull, jaw, .02) + .002);
-  teeth = max(teeth, abs(tq.z + .01) - .03);
+  // detail only when the sample is near the head; otherwise a conservative bound
+  float head, mouth, eyes, teeth;
+  float hb = length(hq - vec3(0., -.07, .02)) - .21;
+  if (hb > .03){
+    head = hb; mouth = 1.; eyes = hb; teeth = hb;
+  } else {
+    float skull = sdEllipsoid(hq - vec3(0., .025, -.015), vec3(.072, .095, .09));
+    // brow ridge, cheekbones, sunken temples, narrow chin
+    skull = smin(skull, sdCapsule(hq, vec3(-.04, .042, .072), vec3(.04, .042, .072), .008), .02);
+    skull = smin(skull, sdEllipsoid(vec3(abs(hq.x) - .046, hq.y + .008, hq.z - .045), vec3(.013, .009, .022)), .012);
+    skull = smax(skull, -sdSphere(vec3(abs(hq.x) - .085, hq.y - .03, hq.z - .03), .03), .02);
+    vec3 jq = hq - vec3(0., -.06 - jawDrop * .55, .035);
+    float jaw = sdEllipsoid(jq, vec3(.048, .028 + jawDrop * .5, .052));
+    mouth = sdEllipsoid(hq - vec3(0., -.062 - jawDrop * .45, .07), vec3(.036, .018 + jawDrop * .48, .05));
+    head = smin(skull, jaw, .02);
+    head = smax(head, -mouth, .005);
+    vec3 eq = vec3(abs(hq.x) - .031, hq.y - .016, hq.z - .066);
+    head = smax(head, -sdSphere(eq, .024), .005);
+    head = smax(head, -sdEllipsoid(hq - vec3(0., -.018, .088), vec3(.011, .017, .02)), .004);   // nasal cavity
+    // cheek tears
+    head = smax(head, -sdEllipsoid(vec3(abs(hq.x) - .042, hq.y + .045, hq.z - .05), vec3(.008, .04, .03)), .004);
+    eyes = sdSphere(eq + vec3(0., 0., .012), .0045);   // tiny milky pupils deep in the sockets
+    // teeth: inward-pointing spikes lining the mouth cavity, clipped to the head volume
+    vec3 tq = hq - vec3(0., -.062 - jawDrop * .45, .07);
+    vec2 trad = vec2(.036, .018 + jawDrop * .48);
+    float tr = length(tq.xy / trad);
+    float ta = atan(tq.x, tq.y);
+    float rin = .72 + .22 * abs(sin(ta * 9.));
+    teeth = max(rin - tr, tr - 1.05) * min(trad.x, trad.y);
+    teeth = max(teeth, smin(skull, jaw, .02) + .002);
+    teeth = max(teeth, abs(tq.z + .01) - .03);
+  }
 
   flesh = smin(flesh, head, .02);
 
@@ -273,7 +280,7 @@ vec2 sdMonster(vec3 p, float t, float seed, float run){
     vec3 side = normalize(cross(hd, f) + 1e-4);
     vec3 palm = W + hd * .07;
     limbs = min(limbs, sdTaper(p, W, palm, .026, .02));
-    for (int k = 0; k < 3; k++){
+    if (length(p - palm) < .3) for (int k = 0; k < 3; k++){
       float kk = float(k) - 1.;
       vec3 k1 = palm + hd * .07 + side * kk * .025;
       vec3 k2 = k1 + normalize(hd + f * .7 * (1. - run) - u * .2) * .11;

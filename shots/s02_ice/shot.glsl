@@ -33,6 +33,7 @@ vec3 skyCol(vec3 rd, float t, float gust){
   return c;
 }
 
+#define CAT_STEPS 72
 vec3 extraLight(vec3 p, vec3 n){ return vec3(0.); }
 // cheap sky for reflections: dark zenith, blowing-snow haze at the horizon, a hint of aurora
 vec3 skyEnv(vec3 r){ float y = max(r.y, 0.); return vec3(.002, .003, .006) + vec3(.014, .019, .03) * exp(-y * 9.) + vec3(.01, .05, .03) * smoothstep(.1, .4, y) * smoothstep(.8, .4, y) * .5; }
@@ -188,7 +189,7 @@ float marchCat(vec3 rol, vec3 rdl, float tmax, out float mat){
   if (bb.x > bb.y || bb.y < 0. || bb.x > tmax) return -1.;
   float t = max(bb.x, 0.);
   float tend = min(bb.y, tmax);
-  for (int i = 0; i < 72; i++){
+  for (int i = 0; i < CAT_STEPS; i++){
     vec2 h = snoCat(rol + rdl * t);
     if (h.x < .0015 * t + .001){ mat = h.y; return t; }
     t += h.x * .9;

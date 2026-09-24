@@ -37,9 +37,21 @@ float tankI(int i){
 }
 
 // ------------------------------------------------------------ camera -----
+vec3 camEnd(){ return vec3(-.42, 1.52, 4.95); }
+vec3 lungePos(){
+  float b = clamp((iTime - T_BURST) / 1.0, 0., 1.);
+  vec3 c = tankC(3) + vec3(0., .45, 0.);
+  vec3 cam = camEnd();
+  vec3 dir = normalize(cam - c); dir.y = 0.; dir = normalize(dir);
+  vec3 target = cam - dir * .8;
+  target.y = cam.y - 1.3;
+  float e = 1. - pow(1. - b, 1.8);
+  vec3 p = mix(c, target, e);
+  p.y += sin(b * PI) * .25;
+  return p;
+}
 vec3 gRo, gTa, gFlPos, gFlDir;
 float gFocal;
-vec3 camEnd(){ return vec3(-.42, 1.52, 4.95); }
 void setupCamera(){
   float t = iTime;
   float s = clamp(t / 8., 0., 1.);
@@ -55,7 +67,7 @@ void setupCamera(){
   if (t > T_BURST){
     float b = t - T_BURST;
     gRo += normalize(gRo - ta1) * .35 * (1. - exp(-b * 4.)) + vec3(0., -.12 * b, 0.);
-    gTa += vec3(0., -.1 * b, 0.);
+    gTa = mix(gTa, lungePos() + vec3(0., 1.2, 0.), .55 * smoothstep(0., .4, b));
   }
   // handheld
   vec3 hh = vec3(noise2(vec2(t * .9, 1.)), noise2(vec2(t * .8, 7.)), noise2(vec2(t * .7, 13.))) - .5;
@@ -140,7 +152,18 @@ float sdHand(vec3 p, float press){
   return h;
 }
 
+// burst lunge (world space)
+vec2 lungeMap(vec3 p){
+  vec3 dc = normalize(gRo - tankC(3)); dc.y = 0.; dc = normalize(dc);
+  vec3 q = p - lungePos();
+  q = rotY(q, -atan(dc.x, dc.z));
+  float b = sdCapsule(q, vec3(0, .2, 0), vec3(0, 2., 0), 1.0);
+  if (b > .2) return vec2(b, 0.);
+  return sdMonster(q, iTime * 1.3 + .0173, .31, 1.);
+}
+
 vec2 figMap(int i, vec3 p){
+  if (i == 4) return lungeMap(p);
   float sc;
   vec3 m = figSpace(i, p, sc);
   float b = sdCapsule(m, vec3(0, .35, 0), vec3(0, 1.75, 0), .55);
@@ -160,26 +183,6 @@ vec2 figMap(int i, vec3 p){
     if (iTime > 8.0) r = opU(r, vec2(sdHand(p, press), M_SKIN));
   }
   return r;
-}
-
-// burst lunge (world space)
-vec3 lungePos(){
-  float b = clamp((iTime - T_BURST) / 1.0, 0., 1.);
-  vec3 c = tankC(3) + vec3(0., .4, 0.);
-  vec3 target = gRo + vec3(0., -1.35, 0.) + normalize(tankC(3) - gRo) * .75;
-  target.y = gRo.y - 1.5;
-  float e = 1. - pow(1. - b, 2.2);
-  vec3 p = mix(c, target, e);
-  p.y += sin(b * PI) * .35;
-  return p;
-}
-vec2 lungeMap(vec3 p){
-  vec3 dc = normalize(gRo - tankC(3)); dc.y = 0.; dc = normalize(dc);
-  vec3 q = p - lungePos();
-  q = rotY(q, -atan(dc.x, dc.z));
-  float b = sdCapsule(q, vec3(0, .2, 0), vec3(0, 2., 0), 1.0);
-  if (b > .2) return vec2(b, 0.);
-  return sdMonster(q, iTime * 1.3 + .0173, .31, 1.);
 }
 
 // ------------------------------------------------------------ scene ------
@@ -243,7 +246,6 @@ vec2 map(vec3 p){
     float jagT = .1 + .3 * abs(sin(ang * 2.3)) * noise2(vec2(ang * 5., 7.));
     float stumpT = max(shell, max(TY1 - jagT - bq.y, bq.y - TY1));
     r = opU(r, vec2(min(stumpB, stumpT), MF_SHARD));
-    if (iTime < 11.4) r = opU(r, lungeMap(p));
   }
 
   // ---- lab bench along the row (between camera and tanks)
@@ -341,6 +343,7 @@ vec3 lightAll(vec3 p, vec3 n, vec3 rd, vec3 alb, float spk, float gloss){
   for (int i = 0; i < 4; i++){
     vec3 c = tankC(i);
     vec3 pc = vec3(c.x, clamp(p.y, .75, 2.05), c.z);
+    if (i == 3 && iTime > T_BURST) pc.y = .65;
     vec3 L = pc - p; float d = length(L); L /= d;
     float dd = max(d - TR * .5, 0.);
     float at = tankI(i) * 1.1 / (1. + 5. * dd * dd);
@@ -489,17 +492,18 @@ float crackMask(vec3 p){
   float wob = (noise2(vec2(r * 9., a * 2.)) - .5) * .5;
   float sec = (a + wob) / TAU * 11.;
   float rad = abs(fract(sec) - .5) * r * TAU / 11.;
-  float lineR = smoothstep(.004, .0, rad) * step(.02, r) * step(.3, hash11(floor(sec) + 3.) + .7 * step(r, R * .6));
+  float lineR = smoothstep(.0025, .0, rad) * step(.06, r) * step(.3, hash11(floor(sec) + 3.) + .7 * step(r, R * .6));
   float rings = 0.;
   for (int k = 0; k < 3; k++){
-    float rk = (.05 + .07 * float(k)) * (1. + .2 * noise2(vec2(a * 3., float(k))));
-    rings = max(rings, smoothstep(.0035, .0, abs(r - rk)) * step(rk, R) * step(.35, noise2(vec2(a * 6., float(k) * 4.))));
+    float rk = (.1 + .08 * float(k)) * (1. + .2 * noise2(vec2(a * 3., float(k))));
+    rings = max(rings, smoothstep(.0025, .0, abs(r - rk)) * step(rk, R) * step(.35, noise2(vec2(a * 6., float(k) * 4.))));
   }
-  float centre = smoothstep(.05, .01, r) * .5;    // crushed star where the palm pushes
-  return clamp(max(max(lineR, rings), centre) * smoothstep(R, R * .8, r), 0., 1.);
+  // only some fragments catch the light
+  float spark = .25 + .75 * step(.55, hash11(floor(sec) * 7. + floor(r * 12.)));
+  return clamp(max(lineR, rings) * spark * smoothstep(R, R * .8, r), 0., 1.);
 }
 
-vec3 tankComposite(int i, vec3 ro, vec3 rd, float t0, float t1, float tOp, vec3 behind, float dither){
+vec3 tankComposite(int i, vec3 ro, vec3 rd, float t0, float t1, float tOp, vec3 behind, float dither, float tm, float fmat, vec3 fn){
   vec3 c = tankC(i);
   float I = tankI(i);
   vec3 pe = ro + rd * t0;
@@ -507,17 +511,6 @@ vec3 tankComposite(int i, vec3 ro, vec3 rd, float t0, float t1, float tOp, vec3 
   float cosi = max(dot(-rd, ne), 0.);
   float F = .04 + .96 * pow(1. - cosi, 5.);
   float tEnd = min(t1, tOp);
-
-  // --- figure inside
-  float tm = -1.;
-  float tt = t0 + .01;
-  for (int k = 0; k < 36; k++){
-    vec3 p = ro + rd * tt;
-    float dd = figMap(i, p).x;
-    if (dd < .0015 * tt) { tm = tt; break; }
-    tt += max(dd, .006);
-    if (tt > tEnd) break;
-  }
   float tB = tm > 0. ? tm : tEnd;
 
   // --- murky glowing liquid: short dithered march
@@ -545,9 +538,9 @@ vec3 tankComposite(int i, vec3 ro, vec3 rd, float t0, float t1, float tOp, vec3 
   // --- figure shading: backlit silhouette, wet highlights
   if (tm > 0.){
     vec3 p = ro + rd * tm;
-    vec3 n = figNrm(i, p);
+    vec3 n = fn;
     float sc; vec3 m = figSpace(i, p, sc);
-    vec2 hm = figMap(i, p);
+    vec2 hm = vec2(0., fmat);
     vec3 alb = monsterAlbedo(hm.y, m) * .5;
     vec3 q = p - c;
     // light: glow from the lamp below and the surrounding liquid (wrap)
@@ -633,7 +626,7 @@ vec3 tankComposite(int i, vec3 ro, vec3 rd, float t0, float t1, float tOp, vec3 
   // flashlight glint on the glass
   vec3 Lf = normalize(gFlPos - pe);
   float cone = smoothstep(.935, .985, dot(-Lf, gFlDir));
-  col += vec3(.8, .9, 1.) * cone * pow(max(dot(R, Lf), 0.), 400.) * 6.;
+  col += vec3(.8, .9, 1.) * cone * pow(max(dot(R, Lf), 0.), 600.) * 2.5;
   col += vec3(.8, .9, 1.) * cone * F * .25;
   // neighbours reflected as vertical streaks
   for (int j = 0; j < 4; j++){
@@ -644,7 +637,7 @@ vec3 tankComposite(int i, vec3 ro, vec3 rd, float t0, float t1, float tOp, vec3 
   // cracks catching light
   if (i == 3){
     float cr = crackMask(pe);
-    col = mix(col, vec3(.85, 1., .9) * (1.2 + 6. * cone) + GREEN * 1.5, cr * .8);
+    col = col * (1. - .35 * cr) + cr * (vec3(.7, 1., .8) * (.25 + 3. * cone) + GREEN * .35 * I);
   }
   return col;
 }
@@ -657,17 +650,19 @@ vec3 burstFX(vec3 ro, vec3 rd, float tOp){
   vec3 c = tankC(3);
   vec3 n = normalize(gRo - c); n.y = 0.; n = normalize(n);
   vec3 sd = normalize(cross(vec3(0, 1, 0), n));
-  for (int k = 0; k < 44; k++){
+  for (int k = 0; k < 80; k++){
     float fk = float(k);
     vec3 h = hash33(vec3(fk, 1.7, 5.3));
     vec3 h2 = hash33(vec3(fk, 8.1, 2.9));
-    bool shard = k < 20;
-    vec3 o = c + vec3(0., TY0 + .2 + h.y * 1.6, 0.) + n * TR + sd * (h.x - .5) * .9;
-    vec3 v = n * (2. + 3.5 * h.z) + sd * (h2.x - .5) * 3. + vec3(0., (h2.y - .2) * 2.5, 0.);
-    float tb = b - h2.z * .15;
+    bool shard = k < 32;
+    vec3 o = c + vec3(0., TY0 + .15 + h.y * 1.7, 0.) + n * TR * (.6 + .4 * h2.z) + sd * (h.x - .5) * .95;
+    float spd = shard ? 2.5 + 3.5 * h.z : 1.2 + 3.2 * h.z;
+    vec3 v = n * spd + sd * (h2.x - .5) * 3.2 + vec3(0., (h2.y - .3) * 2.8, 0.);
+    float tb = b - h2.z * (shard ? .08 : .3);
     if (tb < 0.) continue;
     vec3 p = o + v * tb + vec3(0., -4.9 * tb * tb, 0.);
-    vec3 pp = o + v * max(tb - .035, 0.) + vec3(0., -4.9 * max(tb - .035, 0.) * max(tb - .035, 0.), 0.);
+    float tq0 = max(tb - (shard ? .02 : .06), 0.);
+    vec3 pp = o + v * tq0 + vec3(0., -4.9 * tq0 * tq0, 0.);
     if (p.y < 0.) continue;
     // distance from the view ray to the motion segment
     vec3 ba = p - pp;
@@ -681,12 +676,12 @@ vec3 burstFX(vec3 ro, vec3 rd, float tOp){
     if (tq < 0. || tq > tOp) continue;
     float dist = length(q - ro - rd * tq);
     if (shard){
-      float sz = .006 + .01 * h.z;
-      float glint = pow(hash11(fk + floor(iTime * 24.) * .37), 6.) * 12. + .4;
+      float sz = .003 + .006 * h.z;
+      float glint = pow(hash11(fk + floor(iTime * 24.) * .37), 5.) * 16. + .3;
       col += vec3(.85, 1., .9) * smoothstep(sz, 0., dist) * glint;
     } else {
-      float sz = .012 + .03 * h.z;
-      col += GREEN * smoothstep(sz, sz * .3, dist) * 1.4 * exp(-tb * 1.2);
+      float sz = .006 + .022 * h.z * h.z;
+      col += GREEN * smoothstep(sz, sz * .2, dist) * (.8 + .8 * h2.y) * exp(-tb * 1.5);
     }
   }
   return col;
@@ -737,13 +732,13 @@ vec3 render(vec2 fc){
       if (d > tEndM) break;
     }
   }
-  vec3 col = vec3(0.);
-  if (!hit && bi >= 0 && bestT < tRoom){
-    // inside a tank: what lies behind the liquid is resolved analytically
+  // ---- the one creature march per pixel: the lunging monster (burst) or the figure in this tank
+  bool tankPix = !hit && bi >= 0 && bestT < tRoom;
+  float tExit = 0.; vec3 behind = vec3(.004, .01, .006);
+  if (tankPix){
     vec3 c = tankC(bi);
     float I = tankI(bi);
-    float tExit = bestT1;
-    vec3 behind = vec3(.004, .01, .006);
+    tExit = bestT1;
     if (rd.y < 0.){
       float tp = (TY0 - ro.y) / rd.y;
       if (tp < tExit){
@@ -756,8 +751,38 @@ vec3 render(vec2 fc){
       float tp = (TY1 - ro.y) / rd.y;
       if (tp < tExit){ tExit = tp; behind = GREEN * I * .06; }
     }
+  }
+  int fi = -1; float fa = 0., fb = 0.;
+  bool lunge = iTime > T_BURST && iTime < 11.4;
+  if (lunge){ fi = 4; fa = .05; fb = hit ? d : (tankPix ? bestT : tRoom); }
+  else if (tankPix){ fi = bi; fa = bestT + .01; fb = tExit; }
+  float tm = -1., fmat = 0.; vec3 fn = vec3(0., 1., 0.);
+  if (fi >= 0){
+    float tt = fa;
+    for (int k = 0; k < 40; k++){
+      vec2 fh = figMap(fi, ro + rd * tt);
+      if (fh.x < .0015 * tt) { tm = tt; fmat = fh.y; break; }
+      tt += max(fh.x, .006);
+      if (tt > fb) break;
+    }
+    if (tm > 0.) fn = figNrm(fi, ro + rd * tm);
+  }
+
+  vec3 col = vec3(0.);
+  if (lunge && tm > 0.){
+    // the creature out of the tank: silhouette against the green, wet rim light
+    vec3 p = ro + rd * tm;
+    vec3 alb = monsterAlbedo(fmat, p) * .6;
+    vec3 Lb = normalize(tankC(3) + vec3(0., .6, 0.) - p);
+    float lb = tankI(3) * 1.4 / (1. + dot(tankC(3) - p, tankC(3) - p) * .8);
+    float rim = pow(1. - max(dot(fn, -rd), 0.), 2.5) * max(dot(fn, Lb) + .3, 0.);
+    col = GREEN * lb * (alb * max(dot(fn, Lb), 0.) * .5 + rim * .8 + pow(max(dot(reflect(rd, fn), Lb), 0.), 20.) * monsterSpec(fmat) * 1.5);
+    vec3 Lf = normalize(gFlPos - p);
+    col += vec3(.72, .84, 1.) * smoothstep(.935, .985, dot(-Lf, gFlDir)) * alb * max(dot(fn, Lf), 0.) * .5;
+    d = tm;
+  } else if (tankPix){
     d = tExit;
-    col = tankComposite(bi, ro, rd, bestT, bestT1, tExit, behind, dither);
+    col = tankComposite(bi, ro, rd, bestT, bestT1, tExit, behind, dither, lunge ? -1. : tm, fmat, fn);
   } else {
     vec3 n;
     if (!hit){ d = tRoom; h = vec2(0., mRoom); n = nRoom; }
@@ -775,6 +800,12 @@ vec3 render(vec2 fc){
     vec3 c = tankC(i) + vec3(0., 1.2, 0.);
     fog += GREEN * tankI(i) * scatterPoint(ro, rd, c, tmax, 2.2);
     fog += GREEN * tankI(i) * .5 * scatterPoint(ro, rd, tankC(i) + vec3(0., .25, 0.), tmax, 5.);
+  }
+  if (iTime > T_BURST){
+    // atomised liquid hanging behind the creature: the backdrop its silhouette reads against
+    float bm = iTime - T_BURST;
+    vec3 mc = tankC(3) + vec3(0., 1.1, 0.) + normalize(camEnd() - tankC(3)) * (.3 + .8 * bm);
+    fog += GREEN * 3.5 * exp(-bm * .8) * scatterPoint(ro, rd, mc, tmax, 1.5);
   }
   col += fog * .009 * (.7 + .6 * noise3(ro + rd * 2. + vec3(0., 0., iTime * .1)));
   vec3 beam = vec3(0.);

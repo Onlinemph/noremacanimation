@@ -22,8 +22,8 @@ vec3 skyCol(vec3 rd, float t, float gust){
   if (y > .01){
     vec2 ap = rd.xz / (y + .25);
     float w = ap.x * .45 + 1.3 * noise2(ap * .25 + vec2(t * .03, 0.)) + t * .02;
-    float band = exp(-pow(ap.y - 1.9 - .6 * sin(w * 1.3), 2.) * 1.1);
-    float rays = .5 + .5 * noise2(vec2(w * 9., t * .35));
+    float band = exp(-pow(ap.y - 1.9 - .6 * sin(w * 1.3), 2.) * 2.2);
+    float rays = .45 + .55 * pow(noise2(vec2(w * 14., t * .35)), 1.5) + .25 * pow(noise2(vec2(w * 40., t * .5)), 3.);
     float hgt = smoothstep(.03, .2, y) * smoothstep(.8, .3, y);
     vec3 ac = mix(vec3(.05, .6, .3), vec3(.4, .12, .55), smoothstep(.18, .5, y));
     c += ac * band * rays * rays * hgt * .07 * (.4 + .6 * clear);
@@ -42,8 +42,9 @@ vec3 beaconAt(vec3 p, vec3 n){
   float q0 = dot(d0, d0), q1 = dot(d1, d1);
   float l0 = dot(n, n) > .5 ? max(dot(n, d0 * inversesqrt(q0)), 0.) : .3;
   float l1 = dot(n, n) > .5 ? max(dot(n, d1 * inversesqrt(q1)), 0.) : .3;
-  return BCOL * gBI * (320. * l0 / (q0 + 4.) + 120. * l1 / (q1 + 4.));
+  return BCOL * gBI * (750. * l0 / (q0 + 4.) + 260. * l1 / (q1 + 4.));
 }
+#define CAT_STEPS 56
 vec3 extraLight(vec3 p, vec3 n){ return beaconAt(p, n) * .5; }
 vec3 skyEnv(vec3 r){ float y = max(r.y, 0.); return vec3(.002, .003, .006) + vec3(.012, .016, .026) * exp(-y * 10.) + vec3(.01, .06, .03) * smoothstep(.1, .4, y) * smoothstep(.8, .4, y) * .6; }
 
@@ -198,7 +199,7 @@ float marchCat(vec3 rol, vec3 rdl, float tmax, out float mat){
   if (bb.x > bb.y || bb.y < 0. || bb.x > tmax) return -1.;
   float t = max(bb.x, 0.);
   float tend = min(bb.y, tmax);
-  for (int i = 0; i < 72; i++){
+  for (int i = 0; i < CAT_STEPS; i++){
     vec2 h = snoCat(rol + rdl * t);
     if (h.x < .0015 * t + .001){ mat = h.y; return t; }
     t += h.x * .9;
@@ -386,7 +387,7 @@ void setupCam(float t){
   gFw = normalize(ta - gRo);
   gRt = normalize(cross(gFw, vec3(0., 1., 0.)));   // screen right = world -X when looking down +Z
   gUp = cross(gRt, gFw);
-  gFocal = mix(1.7, 1.9, k);
+  gFocal = mix(1.75, 2.05, k);
 }
 vec3 camDir(vec2 uv){ return normalize(uv.x * gRt + uv.y * gUp + gFocal * gFw); }
 vec3 proj(vec3 wp){ vec3 r = wp - gRo; float z = dot(r, gFw); return vec3(vec2(dot(r, gRt), dot(r, gUp)) / max(z, .001) * gFocal, z); }
@@ -402,7 +403,7 @@ const float PX = 1.0, PZ = 26.0;           // portal center x, front face z
 #define MS_POLE 26.
 #define MS_LAMP 27.
 
-const vec3 MODA = vec3(17., 3.55, 40.);    // module A center, half length 8.5, yaw MODA_A
+const vec3 MODA = vec3(15., 3.55, 33.);    // module A center, half length 8.5, yaw MODA_A
 const vec3 MODB = vec3(25., 3.7, 58.);     // module B center, half length 9, yaw MODB_A
 const float MODA_A = 1.25, MODB_A = 1.45;
 vec3 modLocal(vec3 p, vec3 c, float a){ vec3 q = p - c; q.xz = rot2(a) * q.xz; return q; }
@@ -411,11 +412,11 @@ const vec3 POST = vec3(-6.2, 0., 22.6);
 float groundH(vec2 xz){
   float h = 0.;
   // the big drift the bunker is cut into
-  vec2 d = xz - vec2(PX, PZ + 7.);
+  vec2 d = xz - vec2(PX, PZ + 6.5);
   float dx = abs(xz.x - PX);
   if (abs(d.x) < 30. && abs(d.y) < 24.){
-    float mound = 7.8 * exp(-d.x * d.x / 90. - d.y * d.y / 98.);
-    float cut = smoothstep(PZ - .4, PZ + 2., xz.y);
+    float mound = 10.5 * exp(-d.x * d.x / 110. - d.y * d.y / 80.);
+    float cut = smoothstep(PZ + .9, PZ + 4.5, xz.y);   // keep the approach and the door recess clear
     mound *= mix(1., cut, smoothstep(6.9, 4.5, dx));
     h += mound;
     // drifts piled against the portal face beside the door, and across the threshold
@@ -445,6 +446,10 @@ float portalSDF(vec3 p, out float m){
   float wing = sdBox(vec3(across, q.y - 2.4, along), vec3(.3, 2.4, 2.4));
   wing = max(wing, (q.y - (4.8 - (along + 2.4) * .8)) * .78);
   float conc = min(min(blk, lin), wing);
+  // snow cornice draped over the roof and lintel
+  float cap = sdEllipsoid(q - vec3(0., 6.0, 1.2), vec3(5.4, .6, 2.2));
+  cap = smin(cap, sdEllipsoid(q - vec3(0., 5.95, -.45), vec3(5.2, .22, .5)), .3);
+  cap += .06 * (noise2(q.xz * 1.3) - .5);
   // stepped door recess
   float rec1 = sdBox(q - vec3(0., 1.8, 0.), vec3(1.85, 2.05, .2));
   float rec2 = sdBox(q - vec3(0., 1.66, .5), vec3(1.44, 1.68, .75));
@@ -483,6 +488,7 @@ float portalSDF(vec3 p, out float m){
   hq.y = abs(hq.y) - 1.05;
   float hinge = sdCylY(hq, .1, .24);
   float steel = min(min(wheel, dogs), min(hinge, jamb));
+  if (cap < d){ d = cap; m = MS_SNOW; }
   if (door < d){ d = door; m = MS_DOOR; }
   if (steel < d){ d = steel; m = MS_DSTEEL; }
   return d;
@@ -542,10 +548,12 @@ float drumSDF(vec3 p){
 const vec3 BB_MIN = vec3(-26., -1., 10.), BB_MAX = vec3(30., 9.5, 72.);
 
 vec2 mapBase(vec3 p, bool ground){
-  vec2 r = vec2(ground ? (p.y - groundH(p.xz)) * .6 : 1e5, MS_SNOW);
+  // the drift rises steeply behind the portal: march it more carefully there
+  float lip = (abs(p.x - PX) < 7.5 && p.z > PZ - 1. && p.z < PZ + 8.) ? .33 : .6;
+  vec2 r = vec2(ground ? (p.y - groundH(p.xz)) * lip : 1e5, MS_SNOW);
   float m;
   // every object is only evaluated when its bounding box is closer than what we already have
-  float bd = sdBox(p - vec3(PX, 3.2, PZ + 1.4), vec3(7.4, 3.3, 5.8));
+  float bd = sdBox(p - vec3(PX, 3.4, PZ + 1.4), vec3(7.4, 3.5, 5.8));
   if (bd < r.x){
     float d = portalSDF(p, m);
     if (d < r.x) r = vec2(d, m);
@@ -622,7 +630,7 @@ vec3 shadeBase(vec3 p, vec3 rd, float tb, float mat, float t, float gust, bool i
     // wind-carved sastrugi
     vec2 sp = (rot2(.45) * p.xz) * vec2(.35, .9);
     float h0 = noise2(sp), hx = noise2(sp + vec2(.1, 0.)), hz = noise2(sp + vec2(0., .1));
-    float bm = .3 * smoothstep(50., 5., tb);
+    float bm = .3 * smoothstep(50., 5., tb) * smoothstep(.75, .95, n.y);
     n = normalize(n + vec3(-(hx - h0), 0., -(hz - h0)) * 10. * bm);
     alb = vec3(.78, .83, .9) * (.92 + .1 * h0);
     // under the vehicle, and its track ruts leading in from behind
@@ -661,7 +669,7 @@ vec3 shadeBase(vec3 p, vec3 rd, float tb, float mat, float t, float gust, bool i
     spec = .5;
     frost = .3 * smoothstep(.4, .9, n.y);
   } else if (mat == MS_MOD){
-    alb = vec3(.42, .41, .37) * (.7 + .5 * fbm3lo(p * .8));
+    alb = vec3(.55, .54, .5) * (.7 + .5 * fbm3lo(p * .8));
     alb = mix(alb, vec3(.16, .08, .04), smoothstep(.55, .8, noise3(vec3(p.x, p.y * 3., p.z) * .9)) * .6);
     // square portholes, dark and frosted
     vec3 q = length(p.xz - MODA.xz) < 11. ? modLocal(p, MODA, MODA_A) : modLocal(p, MODB, MODB_A);
@@ -739,23 +747,24 @@ float mastCover(vec2 uv, float tScene, out float hgt){
   vec2 q = (uv - mp.xy) / sc;
   if (q.y < -1. || q.y > MAST_H + 1.5 || abs(q.x) > 2.) return cov;
   hgt = q.y;
-  float w = mix(.95, .35, q.y / MAST_H);             // half width, tapered
-  float lw = max(.05, px / sc * .8);                 // member width (meters), at least ~1px
-  float legs = abs(abs(q.x) - w) - lw * 1.2;
-  // X-bracing in 1.5 m panels
-  float ph = 1.5;
+  float w = mix(.9, .3, q.y / MAST_H);              // half width, tapered
+  float pxm = px / sc;                               // one pixel in meters at the mast
+  // members are thinner than a pixel: distance to centerlines, coverage scaled by width/pixel
+  float legs = abs(abs(q.x) - w);
+  float ph = 1.4;
   float yy = mod(q.y, ph) / ph;
-  float br = min(abs(q.x - w * (2. * yy - 1.)), abs(q.x + w * (2. * yy - 1.))) - lw * .7;
-  br = min(br, abs(mod(q.y + .5 * ph, ph) - .5 * ph) - lw * .6);
+  float br = min(abs(q.x - w * (2. * yy - 1.)), abs(q.x + w * (2. * yy - 1.)));
+  br = min(br, abs(mod(q.y + .5 * ph, ph) - .5 * ph));
   br = max(br, abs(q.x) - w);
-  float m = min(legs, br);
-  m = max(m, -q.y);
-  m = max(m, q.y - MAST_H);
-  // top: beacon housing and a short antenna
-  m = min(m, sdBox2(q - vec2(0., MAST_H + .2), vec2(.18, .2)));
-  m = min(m, sdBox2(q - vec2(0., MAST_H + 1.), vec2(.03, 1.)));
-  m = min(m, sdBox2(q - vec2(0., 12.), vec2(w + .15, .1)));
-  cov = max(cov, smoothstep(px / sc * .9, 0., m));
+  float inM = step(0., q.y) * step(q.y, MAST_H);
+  float cL = smoothstep(pxm, 0., legs) * min(1., .16 / pxm + .25);
+  float cB = smoothstep(pxm, 0., br) * min(1., .07 / pxm + .12);
+  float c = max(cL, cB) * inM;
+  // top: beacon housing and a short antenna; mid platform
+  float top = min(sdBox2(q - vec2(0., MAST_H + .2), vec2(.2, .22)), sdBox2(q - vec2(0., MAST_H + 1.2), vec2(.03, 1.)));
+  top = min(top, sdBox2(q - vec2(0., 12.), vec2(w + .2, .08)));
+  c = max(c, smoothstep(pxm, 0., top));
+  cov = max(cov, c);
   return cov;
 }
 

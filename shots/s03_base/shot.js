@@ -18,7 +18,7 @@ function beacon(t) {
 export default {
   duration: 10,
   fps: 24,
-  sceneScale: 0.62,
+  sceneScale: 0.6,
   params(t) { return [gust(t), beacon(t)]; },
   post(t) {
     const gu = gust(t);

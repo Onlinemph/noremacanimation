@@ -64,7 +64,7 @@ void cacheMonsters(float t){
     vec3 pos; float yaw, run, fall;
     monsterState(i, t, pos, yaw, run, fall);
     cPos[i] = pos; cYaw[i] = yaw; cRun[i] = run; cFall[i] = fall;
-    cFar[i] = step(9., distance(pos.xz, gRo.xz));
+    cFar[i] = max(step(7., distance(pos.xz, gRo.xz)), step(mHit(i) + 1., t));
   }
 }
 // far LOD: capsule skeleton, same silhouette family as the crowd
@@ -181,8 +181,9 @@ vec2 sdKS23Detail(vec3 p, float pump){
 
 vec2 gunSDF(vec3 p){
   vec3 q = p - gGunO;
-  if (dot(q, q) > .8) return vec2(length(q) - .85, 0.);
   vec3 l = vec3(dot(q, gGunR), dot(q, gGunU), dot(q, gGunF));
+  float bnd = sdCapsule(l, vec3(0., -.03, -.6), vec3(0., -.02, .68), .13);
+  if (bnd > .02) return vec2(bnd, 0.);
   // flashlight clamped under the barrel
   vec2 r = sdKS23Detail(l, uP[1]);
   r = opU(r, vec2(sdCylZ(l - vec3(0., -.06, .44), .022, .07), M_GUNMETAL));
