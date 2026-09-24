@@ -132,7 +132,6 @@ vec2 map(vec3 p){
         // pressed hand on the inner glass
         float fade = smoothstep(LAST_T0 + 1.3, LAST_T0 + 1.9, t) * (1.0 - step(BURST_T, t));
         if (fade > 0.001){
-          vec3 hc = c + vec3(0., 0., 0.) + vec3(cos(PI) * 0.0, 0., 0.); // origin marker (unused geo offset)
           vec3 hl = handLocal();
           vec3 hpLocal = vec3(-0.335, hl.y, hl.z);
           vec3 hq = p - (c + hpLocal);

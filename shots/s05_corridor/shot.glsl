@@ -63,7 +63,7 @@ vec2 map(vec3 p){
     float scale = 1.0;
     vec3 msc = mp / scale;
     float monT = uP[2] > 0.001 ? 12.16 : iTime;
-    float bound = sdCapsule(msc, vec3(0.,.2,0.), vec3(0.,2.05,0.), 1.05);
+    float bound = sdCapsule(msc, vec3(0.,.2,0.), vec3(0.,2.05,0.), .7);
     if (bound < .15){
       vec2 mm = sdMonster(msc, monT, .42, 0.0);
       mm.x *= scale;
@@ -76,18 +76,9 @@ vec2 map(vec3 p){
   return r;
 }
 
-vec3 nrm(vec3 p){ vec2 e=vec2(.0015,0.); return normalize(vec3(
-  map(p+e.xyy).x-map(p-e.xyy).x, map(p+e.yxy).x-map(p-e.yxy).x, map(p+e.yyx).x-map(p-e.yyx).x)); }
-
-float shadow(vec3 ro, vec3 rd, float maxd){
-  float res = 1., t = .04;
-  for (int i = 0; i < 22; i++){
-    float h = map(ro + rd*t).x;
-    res = min(res, 9.*h/t);
-    t += clamp(h, .03, .4);
-    if (h < .001 || t > maxd) break;
-  }
-  return clamp(res, 0., 1.);
+vec3 nrm(vec3 p){                     // tetrahedron trick: 4 taps instead of 6
+  const vec2 e = vec2(1.,-1.) * .0015;
+  return normalize(e.xyy*map(p+e.xyy).x + e.yyx*map(p+e.yyx).x + e.yxy*map(p+e.yxy).x + e.xxx*map(p+e.xxx).x);
 }
 
 vec3 matAlbedo(float m, vec3 p, vec3 n){
@@ -109,14 +100,22 @@ vec3 matAlbedo(float m, vec3 p, vec3 n){
   if (m == M_GUNMETAL) return vec3(.03,.033,.036)*(.7+.5*noise3(p*160.));
   if (m == 22.0) return vec3(.9,.92,.95);                 // fluorescent tube lens (emissive-ish, lit separately)
   if (m == 23.0) return vec3(.72,.7,.6)*(.7+.4*noise3(p*40.));  // papers
-  if (m == 24.0) return vec3(.5,.12,.1)*(.6+.5*noise3(p*20.));  // poster (faded red Soviet poster)
+  if (m == 24.0){                                        // poster: stencilled Cyrillic safety notice
+    vec2 uv = vec2(1. - ((p.z-8.0)/.32*.5+.5), (p.y-1.55)/.42*.5+.5);
+    vec3 tex = texture(iTex0, clamp(uv,0.,1.)).rgb;
+    return tex * (.75+.4*noise3(p*20.));
+  }
   // floor: concrete with frost + blood drag mark leading into the doorway at z~11
   vec3 conc = vec3(.12,.12,.115) * (.55+.5*fbm3lo(p*2.));
   float frostc = smoothstep(.5,.92, fbm3lo(p*7.+3.));
   conc = mix(conc, vec3(.78,.85,.92), frostc*.4);
-  vec2 dragUV = vec2(p.x*1.4 - 1.6, p.z*.55 - 5.7);
-  float drag = bloodSplat(dragUV, 8.3);
+  // bloodSplat() is a 10-iteration loop — check the cheap band mask first, only pay for it near the doorway
   float dragBand = smoothstep(.9,.3, abs(p.x-1.0)) * smoothstep(9.5,10.6,p.z) * smoothstep(12.2,11.2,p.z);
+  float drag = 0.0;
+  if (dragBand > .01){
+    vec2 dragUV = vec2(p.x*1.4 - 1.6, p.z*.55 - 5.7);
+    drag = bloodSplat(dragUV, 8.3);
+  }
   conc = mix(conc, vec3(.09,.012,.016), clamp(drag*1.3,0.,1.)*dragBand);
   return conc;
 }
@@ -131,10 +130,10 @@ vec3 render(vec2 fc){
   vec3 rd = camRay(fc, ro, ta, 1.9, bobX*.02);
 
   float d = 0.; vec2 h; vec3 p;
-  for (int i = 0; i < 140; i++){
+  for (int i = 0; i < 64; i++){
     p = ro + rd*d; h = map(p);
-    if (h.x < .0008 || d > 70.) break;
-    d += h.x * .85;
+    if (h.x < .0025 || d > 70.) break;
+    d += h.x * 1.05;
   }
   bool hit = d <= 70.;
   vec3 col = vec3(0.);
@@ -174,14 +173,14 @@ vec3 render(vec2 fc){
     vec3 L = p - flPos; float dist = max(length(L), .5);
     float cone = spotLight(p, flPos, flDir, .82, .965) * flashCookie(p, flPos, flDir);
     float ndotl = max(dot(n, -L/dist), 0.);
-    float flPow = finalPhase ? (isMon ? 0.35 : 0.02) : 0.5;
+    float flPow = finalPhase ? (isMon ? 0.85 : 0.02) : 0.5;
     col += alb * ndotl * cone * flPow * monK * ao * vec3(1.0,.97,.92) * 3.0;
   }
 
   // fluorescent fixtures: most are dead. only a sparse deterministic subset ever lights up,
   // and it pools tightly (steep falloff) rather than flooding the whole corridor.
   if (!finalPhase){
-    for (int k = 0; k < 9; k++){
+    for (int k = 0; k < 6; k++){
       float fkz = float(k) * 3.0 - 1.5;
       float alive = step(0.62, hash11(float(k)*7.13 + 4.0));
       if (alive < .5) continue;
@@ -201,7 +200,7 @@ vec3 render(vec2 fc){
     vec3 lp = ro + vec3(.05,-.55,.15);
     vec3 L = lp - p; float dist = max(length(L), .5);
     float atten = closeUp / (1. + dist*dist*3.4) * (isMon ? 1.0 : 0.08);
-    col += alb * max(dot(n, L/dist),0.) * atten * ao * vec3(1.2,1.0,.8) * 6.0;
+    col += alb * max(dot(n, L/dist),0.) * atten * ao * vec3(1.2,1.0,.8) * 11.0;
   }
 
   // monster: keep it mostly in shadow — a rim from whatever light is behind it, face reads dark
@@ -224,7 +223,6 @@ vec3 render(vec2 fc){
   }
   col = mix(col, hazeCol, clamp(hazeAmt, 0., finalPhase ? 1.0 : 0.9));
   if (finalPhase && !isMon) col = min(col, vec3(0.02)); // background stays flat black behind the reveal
-  if (finalPhase) return col * 20.0;
 
   return col;
 }

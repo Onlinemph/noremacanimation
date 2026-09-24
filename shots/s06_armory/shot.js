@@ -2,6 +2,8 @@
 // 6-18s: five character/weapon cards, Soviet technical-manual style, Canvas2D over a
 // dimmed/blurred hold of the 3D scene.
 
+let smallCanvas, smallCtx; // reused offscreen canvas for the cheap card-phase blur
+
 function pumpEnvelope(t) {
   const t0 = 4.15, t1 = 4.45, t2 = 4.8;
   if (t < t0 || t > t2) return 0;
@@ -138,166 +140,161 @@ function rrect(ctx, cx, cy, s, x, y, w, hh, r) {
   ctx.roundRect(cx + x * s, cy + y * s, w * s, hh * s, (r || 1) * s);
 }
 
+// ---- weapon line art, drawn from real dimensions (millimetres; x toward the muzzle, y down)
+// Each profile is filled in ink, then engraved with paper-coloured detail lines, like a manual plate.
+const PAPER = '#d9cba6';
+function gunCtx(ctx, cx, cy, lenMM, widthPx, x0, y0) {
+  const k = widthPx / lenMM;
+  const X = x => cx + (x - x0) * k, Y = y => cy + (y - y0) * k;
+  const poly = (pts, fill = true) => { ctx.beginPath(); pts.forEach(([x, y], i) => i ? ctx.lineTo(X(x), Y(y)) : ctx.moveTo(X(x), Y(y))); ctx.closePath(); fill ? ctx.fill() : ctx.stroke(); };
+  const rect = (x, y, w, h, r = 0) => { ctx.beginPath(); ctx.roundRect(X(x), Y(y), w * k, h * k, r * k); ctx.fill(); };
+  const line = (pts, wmm) => { ctx.lineWidth = Math.max(0.8, wmm * k); ctx.beginPath(); pts.forEach(([x, y], i) => i ? ctx.lineTo(X(x), Y(y)) : ctx.moveTo(X(x), Y(y))); ctx.stroke(); };
+  const circ = (x, y, r, fill = true) => { ctx.beginPath(); ctx.arc(X(x), Y(y), r * k, 0, Math.PI * 2); fill ? ctx.fill() : ctx.stroke(); };
+  const ring = (x, y, rx, ry, wmm) => { ctx.lineWidth = Math.max(0.8, wmm * k); ctx.beginPath(); ctx.ellipse(X(x), Y(y), rx * k, ry * k, 0, 0, Math.PI * 2); ctx.stroke(); };
+  return { k, X, Y, poly, rect, line, circ, ring };
+}
+
 function drawGun(ctx, key, cx, cy, s, ink) {
   ctx.save();
-  ctx.fillStyle = ink;
-  ctx.strokeStyle = ink;
-  ctx.lineJoin = 'round';
+  ctx.fillStyle = ink; ctx.strokeStyle = ink; ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+  const engrave = () => { ctx.strokeStyle = PAPER; ctx.fillStyle = PAPER; };
+  const inkup = () => { ctx.strokeStyle = ink; ctx.fillStyle = ink; };
 
   if (key === 'ks23') {
-    // long thick barrel + slimmer tube magazine under it, blocky receiver,
-    // ribbed wooden pump forend, sloped wooden stock. ~23mm bore, ~1m long.
-    rrect(ctx, cx, cy, s, -6, -10, 28, 20, 3); ctx.fill();          // receiver
-    rrect(ctx, cx, cy, s, 20, -6, 78, 8, 2); ctx.fill();            // barrel
-    rrect(ctx, cx, cy, s, 26, 4, 58, 4.5, 1.5); ctx.fill();         // tube magazine (under barrel)
-    rrect(ctx, cx, cy, s, 17, 1, 27, 9, 2.5); ctx.fill();           // pump forend (wraps tube)
-    ctx.save(); ctx.strokeStyle = ink; ctx.lineWidth = 1.4 * s;
-    for (let i = 0; i < 5; i++) { ctx.beginPath(); ctx.moveTo(cx + (20 + i * 5) * s, cy + 1 * s); ctx.lineTo(cx + (20 + i * 5) * s, cy + 10 * s); ctx.stroke(); }
-    ctx.restore();                                                   // forend ribs
-    ctx.beginPath();                                                 // wood stock, sloped
-    ctx.moveTo(cx - 6 * s, cy - 3 * s);
-    ctx.lineTo(cx - 46 * s, cy + 5 * s);
-    ctx.lineTo(cx - 50 * s, cy + 16 * s);
-    ctx.lineTo(cx - 30 * s, cy + 14 * s);
-    ctx.lineTo(cx - 6 * s, cy + 9 * s);
-    ctx.closePath(); ctx.fill();
-    rrect(ctx, cx, cy, s, -3, 9, 8, 10, 2); ctx.fill();             // pistol grip stub
-    ctx.beginPath(); ctx.ellipse(cx + 3 * s, cy + 12 * s, 5 * s, 4 * s, 0, 0, Math.PI * 2); ctx.lineWidth = 1.8 * s; ctx.stroke(); // trigger guard
-    ctx.restore();
-    return;
+    // KS-23: 1040 mm, 23 mm bore, pump action, tube magazine, wooden stock with semi-pistol grip
+    const g = gunCtx(ctx, cx, cy, 1040, 410 * s, 520, 40);
+    g.rect(470, -17, 570, 34, 6);                                   // barrel
+    g.rect(1016, -27, 10, 12, 2);                                   // front sight
+    g.rect(470, 17, 380, 26, 10);                                   // magazine tube
+    g.rect(840, 12, 16, 36, 4);                                     // tube cap / barrel band
+    g.rect(560, 6, 200, 46, 16);                                    // pump forend
+    g.poly([[300, -30], [470, -30], [480, -20], [480, 46], [440, 52], [330, 52], [300, 44]]);  // receiver
+    g.rect(430, -39, 22, 11, 3);                                    // rear sight
+    g.line([[332, 52], [336, 80], [372, 86], [410, 70], [416, 52]], 7);  // trigger guard
+    g.line([[372, 54], [366, 74]], 6);                              // trigger
+    g.poly([[302, -28], [40, -6], [8, -8], [0, 2], [0, 124], [14, 132], [180, 80], [222, 72],
+            [246, 126], [288, 132], [304, 72], [312, 46]]);          // wooden stock + grip
+    engrave();
+    for (let i = 0; i < 7; i++) g.line([[585 + i * 25, 12], [585 + i * 25, 46]], 5);  // forend grooves
+    g.poly([[360, -18], [450, -18], [450, 4], [360, 4]], false);    // ejection port outline
+    ctx.lineWidth = Math.max(0.8, 3 * g.k); g.poly([[360, -18], [450, -18], [450, 4], [360, 4]], false);
+    g.line([[480, 0], [1030, 0]], 1.5);                             // barrel highlight
+    g.line([[0, 10], [0, 118]], 6);                                 // buttplate seam
+    g.line([[300, 30], [440, 30]], 2);                              // receiver seam
+    inkup();
   }
 
-  if (key === 'aks74u') {
-    // short barrel + bulbous muzzle booster, gas block/front sight, receiver,
-    // curved forward-sweeping magazine, pistol grip, extended skeleton stock.
-    rrect(ctx, cx, cy, s, -32, -6.5, 26, 3, 1); ctx.fill();          // stock tube
-    ctx.save(); ctx.lineWidth = 2.3 * s;                              // wire buttplate loop
-    ctx.strokeRect(cx + -37 * s, cy + -9 * s, 4 * s, 13 * s);
-    ctx.restore();
-    rrect(ctx, cx, cy, s, -8, -9, 19, 12, 2.5); ctx.fill();          // receiver
-    rrect(ctx, cx, cy, s, 10, -3, 13, 5.5, 1.5); ctx.fill();         // handguard
-    rrect(ctx, cx, cy, s, 10, -6.5, 25, 3.2, 1); ctx.fill();         // barrel
-    rrect(ctx, cx, cy, s, 33, -8, 12, 5.5, 2.2); ctx.fill();         // muzzle booster
-    rrect(ctx, cx, cy, s, 18, -10, 6, 4, 1); ctx.fill();             // front sight / gas block
-    rrect(ctx, cx, cy, s, -7, -12, 5, 3, 1); ctx.fill();             // rear sight
-    ctx.save(); ctx.translate(cx - 3 * s, cy + 2 * s); ctx.rotate(0.35);
-    ctx.beginPath(); ctx.roundRect(-3 * s, 0, 6.5 * s, 15 * s, 2 * s); ctx.fill(); ctx.restore(); // pistol grip
-    ctx.beginPath(); ctx.ellipse(cx + 2 * s, cy + 5 * s, 4.5 * s, 3.2 * s, 0, 0, Math.PI * 2); ctx.lineWidth = 1.8 * s; ctx.stroke(); // trigger guard
-    ctx.beginPath();                                                  // curved 30-rd magazine, sweeping forward
-    ctx.moveTo(cx + 0 * s, cy + 2 * s);
-    ctx.bezierCurveTo(cx + 18 * s, cy + 8 * s, cx + 20 * s, cy + 20 * s, cx + 13 * s, cy + 28 * s);
-    ctx.bezierCurveTo(cx + 10 * s, cy + 18 * s, cx + 4 * s, cy + 10 * s, cx - 4 * s, cy + 7 * s);
-    ctx.closePath(); ctx.fill();
-    ctx.restore();
-    return;
-  }
-
-  if (key === 'ppsh41') {
-    // perforated barrel jacket with slanted muzzle brake, wooden rifle stock,
-    // large 71-round drum magazine.
+  else if (key === 'aks74u') {
+    // AKS-74U: 730 mm stock extended, 206 mm barrel, flash hider/booster, curved 30-rd magazine, skeleton folding stock
+    const g = gunCtx(ctx, cx, cy, 730, 330 * s, 370, 90);
+    g.poly([[672, -20], [700, -24], [730, -20], [730, 20], [700, 24], [672, 20]]);   // muzzle booster
+    g.rect(600, -9, 76, 18, 3);                                     // barrel
+    g.poly([[555, -12], [612, -12], [612, 14], [555, 14]]);         // gas block
+    g.poly([[575, -12], [585, -46], [602, -46], [608, -12]]);       // front sight tower
+    g.rect(400, -34, 165, 20, 8);                                   // gas tube + upper handguard
+    g.poly([[400, -12], [558, -12], [558, 8], [548, 24], [410, 24], [400, 14]]);      // lower handguard
+    g.poly([[170, -24], [410, -24], [410, 28], [170, 28]]);         // receiver
+    g.poly([[170, -24], [180, -36], [360, -36], [400, -24]]);       // hinged top cover
+    g.poly([[318, -36], [322, -48], [352, -48], [356, -36]]);       // flip rear sight
+    // curved 30-round magazine sweeping forward
     ctx.beginPath();
-    ctx.moveTo(cx + 68 * s, cy - 14 * s);
-    ctx.lineTo(cx + 75 * s, cy - 18 * s);
-    ctx.lineTo(cx + 75 * s, cy - 2 * s);
-    ctx.lineTo(cx + 68 * s, cy - 2 * s);
-    ctx.closePath(); ctx.fill();                                     // slanted muzzle brake
-    rrect(ctx, cx, cy, s, 25, -14, 43, 12, 2); ctx.fill();           // barrel jacket
-    ctx.save(); ctx.globalCompositeOperation = 'destination-out';
-    for (let i = 0; i < 7; i++) { ctx.beginPath(); ctx.arc(cx + (30 + i * 6) * s, cy - 8 * s, 1.7 * s, 0, Math.PI * 2); ctx.fill(); }
-    ctx.restore();
-    ctx.beginPath();                                                  // full wood stock, comb + butt
-    ctx.moveTo(cx + 25 * s, cy - 10 * s);
-    ctx.lineTo(cx - 10 * s, cy - 8 * s);
-    ctx.lineTo(cx - 42 * s, cy - 3 * s);
-    ctx.lineTo(cx - 58 * s, cy + 3 * s);
-    ctx.lineTo(cx - 58 * s, cy + 17 * s);
-    ctx.lineTo(cx - 16 * s, cy + 19 * s);
-    ctx.lineTo(cx + 4 * s, cy + 6 * s);
-    ctx.lineTo(cx + 25 * s, cy - 1 * s);
-    ctx.closePath(); ctx.fill();
-    ctx.beginPath(); ctx.arc(cx + 3 * s, cy + 17 * s, 15 * s, 0, Math.PI * 2); ctx.fill(); // drum magazine
-    ctx.restore();
-    return;
+    ctx.moveTo(g.X(328), g.Y(26)); ctx.lineTo(g.X(392), g.Y(26));
+    ctx.quadraticCurveTo(g.X(412), g.Y(150), g.X(468), g.Y(246));
+    ctx.lineTo(g.X(404), g.Y(270));
+    ctx.quadraticCurveTo(g.X(350), g.Y(160), g.X(328), g.Y(26));
+    ctx.fill();
+    g.poly([[250, 26], [236, 150], [200, 152], [206, 26]]);         // pistol grip, raked back
+    g.line([[252, 28], [262, 58], [300, 60], [318, 28]], 7);        // trigger guard
+    g.line([[280, 30], [276, 50]], 5);                              // trigger
+    // skeleton stock: top strut, angled lower strut, butt plate
+    g.line([[170, -16], [12, -16]], 16);
+    g.line([[170, 20], [18, 66]], 14);
+    g.poly([[0, -26], [22, -26], [24, 84], [2, 86]]);
+    engrave();
+    g.line([[190, -4], [300, -4]], 2);                              // receiver rib
+    g.poly([[300, -18], [360, -18], [360, -4], [300, -4]], false);  // ejection port
+    for (let i = 0; i < 6; i++) g.line([[420 + i * 22, -6], [420 + i * 22, 18]], 3);   // handguard ribs
+    for (let i = 0; i < 4; i++) g.line([[704, -16 + i * 10], [724, -16 + i * 10]], 2); // booster ports
+    g.line([[36, -16], [150, -16]], 3);                             // strut lightening slot
+    inkup();
   }
 
-  if (key === 'spsh') {
-    // stubby single-shot break-action flare pistol: thick short barrel, chunky
-    // frame, hammer spur, raked grip.
-    rrect(ctx, cx, cy, s, 4, -14, 26, 9, 2.5); ctx.fill();           // fat 26mm barrel
-    rrect(ctx, cx, cy, s, -8, -13, 14, 8, 2); ctx.fill();            // frame
-    ctx.beginPath(); ctx.moveTo(cx - 8 * s, cy - 13 * s); ctx.lineTo(cx - 13 * s, cy - 15 * s); ctx.lineTo(cx - 9 * s, cy - 9 * s); ctx.closePath(); ctx.fill(); // hammer spur
-    ctx.save(); ctx.translate(cx - 6 * s, cy - 5 * s); ctx.rotate(0.55);
-    ctx.beginPath(); ctx.roundRect(-4 * s, 0, 8 * s, 20 * s, 2 * s); ctx.fill(); ctx.restore(); // grip
-    ctx.beginPath(); ctx.ellipse(cx - 1 * s, cy + 4 * s, 5 * s, 3.5 * s, 0, 0, Math.PI * 2); ctx.lineWidth = 1.8 * s; ctx.stroke();
-    ctx.restore();
-    return;
+  else if (key === 'ppsh41') {
+    // PPSh-41: 843 mm, perforated barrel jacket with slanted compensator, wooden stock, 71-rd drum
+    const g = gunCtx(ctx, cx, cy, 843, 380 * s, 420, 50);
+    g.poly([[520, -22], [843, -22], [812, 22], [520, 22]]);         // barrel jacket + slanted compensator front
+    g.rect(812, -34, 12, 14, 3);                                    // front sight hood
+    g.poly([[360, -26], [530, -26], [530, 24], [360, 24]]);         // receiver
+    g.poly([[455, -26], [460, -40], [488, -40], [492, -26]]);       // L-flip rear sight
+    g.circ(472, 118, 84);                                           // 71-round drum
+    g.rect(446, 20, 54, 24, 4);                                     // drum neck
+    g.poly([[362, -20], [230, -12], [0, 8], [0, 150], [38, 154], [252, 56], [330, 44],
+            [360, 26], [560, 26], [560, 22], [362, 22]]);            // one-piece wooden stock
+    g.line([[370, 44], [372, 72], [420, 74], [428, 44]], 7);        // trigger guard
+    engrave();
+    for (let r = 0; r < 2; r++) for (let i = 0; i < 7; i++) g.ring(560 + i * 34, -8 + r * 16, 11, 4.5, 3);  // cooling slots
+    g.ring(472, 118, 70, 70, 3); g.ring(472, 118, 22, 22, 3);       // drum face
+    g.line([[0, 16], [0, 140]], 6);                                 // buttplate
+    g.line([[380, -12], [520, -12]], 2);                            // bolt track
+    inkup();
   }
 
-  if (key === 'pm') {
-    // compact blowback pistol: blocky slide, exposed hammer spur, short grip.
-    rrect(ctx, cx, cy, s, -6, -9, 40, 7, 1.5); ctx.fill();           // slide + barrel
-    ctx.beginPath(); ctx.moveTo(cx - 6 * s, cy - 9 * s); ctx.lineTo(cx - 11 * s, cy - 11 * s); ctx.lineTo(cx - 8 * s, cy - 5 * s); ctx.closePath(); ctx.fill(); // hammer spur
-    rrect(ctx, cx, cy, s, -9, -3, 13, 6, 1.5); ctx.fill();           // frame / trigger guard block
-    ctx.save(); ctx.translate(cx - 7 * s, cy + 2 * s); ctx.rotate(0.14);
-    ctx.beginPath(); ctx.roundRect(-4 * s, 0, 8 * s, 15 * s, 2 * s); ctx.fill(); ctx.restore(); // grip
-    ctx.beginPath(); ctx.ellipse(cx + 4 * s, cy + 3 * s, 4 * s, 3 * s, 0, 0, Math.PI * 2); ctx.lineWidth = 1.6 * s; ctx.stroke();
-    ctx.restore();
-    return;
+  else if (key === 'spsh') {
+    // SPSh-44 signal pistol: 26 mm bore, fat barrel, break action, big hammer, raked grip
+    const g = gunCtx(ctx, cx, cy, 280, 180 * s, 150, 55);
+    g.rect(96, -24, 184, 48, 8);                                    // barrel
+    g.rect(268, -28, 12, 56, 4);                                    // muzzle ring
+    g.poly([[44, -28], [110, -28], [110, 32], [60, 34], [44, 18]]); // frame
+    g.poly([[48, -26], [24, -46], [18, -38], [40, -12]]);           // hammer spur
+    g.poly([[48, 26], [86, 30], [52, 150], [12, 146]]);             // grip
+    g.line([[80, 32], [88, 64], [116, 64], [120, 32]], 6);          // trigger guard
+    engrave();
+    g.line([[110, -24], [110, 24]], 3);                             // break-action hinge seam
+    g.line([[120, 0], [262, 0]], 2);
+    for (let i = 0; i < 5; i++) g.line([[34 + i * 5, 60 + i * 18], [64 + i * 4, 64 + i * 18]], 2);  // grip checkering
+    inkup();
+  }
+
+  else if (key === 'pm') {
+    // Makarov PM: 161 mm, blowback, exposed hammer, star on the grip
+    const g = gunCtx(ctx, cx, cy, 161, 170 * s, 85, 45);
+    g.poly([[16, -20], [156, -20], [161, -14], [161, 6], [16, 6]]); // slide
+    g.poly([[18, -16], [4, -24], [0, -18], [12, -4]]);              // hammer spur
+    g.poly([[20, 6], [140, 6], [140, 18], [20, 22]]);               // frame
+    g.poly([[24, 18], [70, 18], [58, 118], [14, 114]]);             // grip
+    g.line([[72, 20], [80, 46], [116, 46], [124, 18]], 5);          // trigger guard
+    engrave();
+    for (let i = 0; i < 8; i++) g.line([[22 + i * 4, -18], [22 + i * 4, 4]], 1.4);  // slide serrations
+    g.line([[16, -6], [150, -6]], 1.2);
+    g.circ(42, 70, 12, false);                                     // star medallion
+    ctx.lineWidth = Math.max(0.8, 2 * g.k); g.circ(42, 70, 12, false);
+    inkup();
   }
   ctx.restore();
 }
 
 function drawGrenade(ctx, cx, cy, s, ink) {
-  ctx.save();
-  ctx.fillStyle = ink;
-  ctx.strokeStyle = ink;
-  // RGD-5: segmented egg-shaped body
-  ctx.beginPath();
-  ctx.ellipse(cx, cy + 6 * s, 11 * s, 14 * s, 0, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.strokeStyle = 'rgba(0,0,0,0.35)';
-  ctx.lineWidth = 1 * s;
-  ctx.beginPath(); ctx.moveTo(cx - 11 * s, cy + 6 * s); ctx.lineTo(cx + 11 * s, cy + 6 * s); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(cx, cy - 8 * s); ctx.lineTo(cx, cy + 20 * s); ctx.stroke();
-  // fuse assembly + lever on top
-  ctx.fillStyle = ink;
-  ctx.fillRect(cx - 4 * s, cy - 16 * s, 8 * s, 9 * s);
-  ctx.beginPath();
-  ctx.moveTo(cx + 4 * s, cy - 15 * s);
-  ctx.lineTo(cx + 13 * s, cy - 17 * s);
-  ctx.lineTo(cx + 13 * s, cy - 12 * s);
-  ctx.lineTo(cx + 4 * s, cy - 10 * s);
-  ctx.closePath();
-  ctx.fill();
+  // RGD-5: 114 mm tall egg body, fuse head and spoon lever
+  ctx.save(); ctx.fillStyle = ink; ctx.strokeStyle = ink; ctx.lineJoin = 'round';
+  const g = gunCtx(ctx, cx, cy, 114, 60 * s, 0, 30);
+  ctx.beginPath(); ctx.ellipse(g.X(0), g.Y(50), 28 * g.k, 36 * g.k, 0, 0, Math.PI * 2); ctx.fill();
+  g.rect(-9, -2, 18, 16, 2);                                        // fuse body
+  g.poly([[9, 0], [18, -2], [30, 52], [24, 54]]);                   // spoon lever down the side
+  g.ring(-12, 0, 7, 7, 3);                                          // pull ring
+  ctx.strokeStyle = PAPER; g.line([[-28, 50], [28, 50]], 2); g.line([[-26, 34], [26, 34]], 1.2); g.line([[-26, 66], [26, 66]], 1.2);
   ctx.restore();
 }
 
 function drawAxe(ctx, cx, cy, s, ink) {
-  ctx.save();
-  ctx.fillStyle = ink;
-  ctx.strokeStyle = ink;
-  ctx.lineCap = 'round';
-  // handle, angled
-  ctx.lineWidth = 4 * s;
-  ctx.beginPath();
-  ctx.moveTo(cx - 8 * s, cy + 46 * s);
-  ctx.lineTo(cx + 10 * s, cy - 34 * s);
-  ctx.stroke();
-  // axe head: curved bit on one side, small poll on the other
-  ctx.beginPath();
-  ctx.moveTo(cx + 10 * s, cy - 34 * s);
-  ctx.quadraticCurveTo(cx + 40 * s, cy - 40 * s, cx + 46 * s, cy - 18 * s);
-  ctx.quadraticCurveTo(cx + 28 * s, cy - 12 * s, cx + 6 * s, cy - 18 * s);
-  ctx.closePath();
-  ctx.fill();
-  ctx.beginPath();
-  ctx.moveTo(cx + 10 * s, cy - 34 * s);
-  ctx.lineTo(cx - 8 * s, cy - 30 * s);
-  ctx.lineTo(cx - 6 * s, cy - 18 * s);
-  ctx.lineTo(cx + 6 * s, cy - 18 * s);
-  ctx.closePath();
-  ctx.fill();
-  ctx.restore();
+  // Soviet fire axe: long handle, blade and pick
+  ctx.save(); ctx.fillStyle = ink; ctx.strokeStyle = ink; ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+  const g = gunCtx(ctx, cx, cy, 700, 150 * s, 0, 0);
+  ctx.save(); ctx.translate(cx, cy); ctx.rotate(-1.2); ctx.translate(-cx, -cy);
+  g.rect(-330, -16, 660, 32, 12);                                    // handle
+  g.poly([[250, -18], [340, -18], [350, -95], [290, -120], [270, -40]]);   // blade (toward -y)
+  g.poly([[270, 18], [330, 18], [300, 120]]);                        // pick
+  ctx.strokeStyle = PAPER; g.line([[296, -110], [340, -92]], 4);     // edge bevel
+  ctx.restore(); ctx.restore();
 }
 
 // deterministic pseudo-random in [0,1), so per-frame overlay redraws are stable
@@ -435,10 +432,9 @@ function drawCard(ctx, card, ct, s, W, H, idx) {
 
   // gun silhouette, upper-left
   const gx = -cw * 0.25, gy = -ch * 0.22;
-  const gscale = card.key === 'ks23' ? 2.5 * s : card.key === 'pm' ? 4.0 * s : 3.1 * s;
-  drawGun(ctx, card.key, gx, gy, gscale, '#241d12');
-  if (card.key === 'spsh') drawAxe(ctx, gx + 120 * s, gy + 20 * s, 1.0 * s, '#241d12');
-  if (card.key === 'aks74u') drawGrenade(ctx, gx + 145 * s, gy + 40 * s, 1.4 * s, '#241d12');
+  drawGun(ctx, card.key, card.key === 'spsh' ? gx - 70 * s : gx, gy, s, '#241d12');
+  if (card.key === 'spsh') drawAxe(ctx, gx + 110 * s, gy + 5 * s, s, '#241d12');
+  if (card.key === 'aks74u') drawGrenade(ctx, gx + 185 * s, gy + 50 * s, s, '#241d12');
 
   // designation block, right side
   const tx = cw * 0.06, ty0 = -ch * 0.30;
@@ -495,7 +491,7 @@ export default {
       bar: 0.12, grain: 0.07, aberr: 0.0016, vignette: 0.95, bloom: 0.4,
       contrast: 1.08, sat: 0.92, temp: -0.05,
     };
-    if (t < 6) return { ...base, exposure: 1.5 };
+    if (t < 6) return { ...base, exposure: 1.35 };
     // dim the 3D scene during the card sequence; snap-flash on each transition
     const local = t - 6, idx = Math.min(4, Math.floor(local / 2.4)), ct = local - idx * 2.4;
     const flash = ct < 0.06 ? 1 - ct / 0.06 : 0;
@@ -511,13 +507,17 @@ export default {
   overlay(ctx, t, W, H) {
     if (t < 6) return;
     const s = W / 1280;
-    // blur + dim the composited 3D frame in place, so the scene reads behind the card
-    try {
-      ctx.filter = 'blur(' + Math.round(14 * s) + 'px) brightness(0.8) saturate(0.7)';
-      ctx.drawImage(ctx.canvas, 0, 0);
-      ctx.filter = 'none';
-    } catch (e) { /* canvas filter unsupported: fall back to a flat dim */ }
-    ctx.fillStyle = 'rgba(6,7,9,0.50)';
+    // dim + soften the composited 3D frame in place, so the scene reads behind the
+    // card: downscale to a tiny offscreen canvas and stretch it back up. This gives a
+    // cheap blur-like effect (bilinear box filtering) without a full-res CSS blur pass,
+    // which is expensive in software (SwiftShader/Skia) at 1280x720 every frame.
+    if (!smallCanvas) { smallCanvas = (typeof OffscreenCanvas !== 'undefined') ? new OffscreenCanvas(1, 1) : document.createElement('canvas'); smallCtx = smallCanvas.getContext('2d'); }
+    const sw = 96, sh = 54;
+    if (smallCanvas.width !== sw || smallCanvas.height !== sh) { smallCanvas.width = sw; smallCanvas.height = sh; }
+    smallCtx.drawImage(ctx.canvas, 0, 0, sw, sh);
+    ctx.imageSmoothingEnabled = true;
+    ctx.drawImage(smallCanvas, 0, 0, sw, sh, 0, 0, W, H);
+    ctx.fillStyle = 'rgba(6,7,9,0.42)';
     ctx.fillRect(0, 0, W, H);
 
     const local = t - 6, idx = Math.min(4, Math.floor(local / 2.4)), ct = local - idx * 2.4;

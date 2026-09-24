@@ -71,6 +71,7 @@ function closeUpFactor(t) {
 export default {
   duration: 14,
   fps: 24,
+  sceneScale: 0.5,
 
   params(t) {
     return [lightIntensity(t), monsterZ(t), closeUpFactor(t), camZ(t)];
@@ -88,17 +89,55 @@ export default {
       grain: 0.075,
       vignette: 1.05,
       shake,
-      exposure: final ? 1.0 : 0.98,
-      contrast: final ? 1.3 : 1.15,
+      exposure: final ? 1.1 : 0.98,
+      contrast: final ? 1.15 : 1.15,
       sat: final ? 0.55 : 0.85,
       temp: -0.3,
       bloom: final ? 0.12 : 0.28,
       // a single sharp, small strobe right at the instant the lights snap back on
-      flash: (t >= 12.2 && t < 12.22) ? 0.1 * (1 - (t - 12.2) / 0.02) : 0,
+      flash: (t >= 12.2 && t < 12.22) ? 0.05 * (1 - (t - 12.2) / 0.02) : 0,
       flashColor: [1, 0.95, 0.9],
       fade,
     };
   },
 
   overlay() {},
+
+  textures: [
+    {
+      w: 512, h: 640,
+      draw(ctx, w, h) {
+        ctx.fillStyle = '#7a1210';
+        ctx.fillRect(0, 0, w, h);
+        // faded/weathered paper texture
+        for (let i = 0; i < 2500; i++) {
+          const x = Math.random() * w, y = Math.random() * h;
+          ctx.fillStyle = `rgba(0,0,0,${Math.random() * 0.12})`;
+          ctx.fillRect(x, y, 2, 2);
+        }
+        ctx.strokeStyle = 'rgba(0,0,0,0.4)';
+        ctx.lineWidth = 10;
+        ctx.strokeRect(20, 20, w - 40, h - 40);
+        ctx.textAlign = 'center';
+        ctx.fillStyle = '#e8dcb0';
+        ctx.font = 'bold 58px "Russo One"';
+        ctx.fillText('СОВЕРШЕННО', w / 2, 220);
+        ctx.fillText('СЕКРЕТНО', w / 2, 290);
+        ctx.font = '30px "PT Mono"';
+        ctx.fillStyle = '#d8c89a';
+        ctx.fillText('ОБЪЕКТ 9', w / 2, 380);
+        ctx.font = '22px "PT Mono"';
+        wrapText(ctx, 'МИНИСТЕРСТВО СРЕДНЕГО', w / 2, 440, w - 80, 28);
+        wrapText(ctx, 'МАШИНОСТРОЕНИЯ СССР', w / 2, 470, w - 80, 28);
+        // water damage streak
+        const grad = ctx.createLinearGradient(0, 0, 0, h);
+        grad.addColorStop(0, 'rgba(0,0,0,0)');
+        grad.addColorStop(1, 'rgba(0,0,0,0.35)');
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, w, h);
+
+        function wrapText(c, text, x, y) { c.fillText(text, x, y); }
+      },
+    },
+  ],
 };

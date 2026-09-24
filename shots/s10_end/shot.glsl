@@ -1,185 +1,273 @@
 // s10_end (0-15s)
-//  0-7s   exterior: Object 9 burning in the distance under aurora, Kharkovchanka receding
+//  0-7s   exterior: Object 9 burning on the horizon under aurora; the Kharkovchanka drives away into the night
 //  7-13s  black, then the same green CRT from s01 (code copied verbatim), new decoded lines
 //  13-15s hard cut to black, title card (drawn entirely in overlay)
 
-// ============================================================ camera / projection ===
-const float FOCAL = 1.55;
-vec3 gCamRo, gCamFwd, gCamRight, gCamUp;
-void setupCam(){
-  gCamRo = vec3(0.0, 1.7, 0.0);
-  vec3 ta = vec3(0.0, 2.0, 5.0);
-  gCamFwd = normalize(ta - gCamRo);
-  gCamRight = normalize(cross(gCamFwd, vec3(0.0, 1.0, 0.0)));
-  gCamUp = cross(gCamRight, gCamFwd);
+// ============================================================ exterior ===
+// Camera stands on the escape track looking back-left at the base (~650 m away). The tractor
+// passes on the right and drives away from camera, tail lights toward us.
+vec3 gRo, gF, gR, gU;
+const float FOCAL = 1.9;
+void setupCam(float t){
+  gRo = vec3(0.0, 1.55 + .03 * sin(t * .7), 0.0);
+  vec3 ta = vec3(-40. + t * 4., 22., 450.);
+  gF = normalize(ta - gRo);
+  gR = normalize(cross(vec3(0., 1., 0.), gF));   // screen right = world +x
+  gU = cross(gF, gR);
 }
-// returns (screenUV.x, screenUV.y, camera-space depth)
-vec3 projectPoint(vec3 wp){
-  vec3 rel = wp - gCamRo;
-  float cz = dot(rel, gCamFwd);
-  float cx = dot(rel, gCamRight);
-  float cy = dot(rel, gCamUp);
-  return vec3(vec2(cx, cy) / max(cz, 0.001) * FOCAL, cz);
-}
+vec3 camDir(vec2 uv){ return normalize(uv.x * gR + uv.y * gU + FOCAL * gF); }
+vec3 project(vec3 wp){ vec3 r = wp - gRo; float z = dot(r, gF); return vec3(vec2(dot(r, gR), dot(r, gU)) / max(z, .001) * FOCAL, z); }
 
-// ============================================================ exterior: fire + smoke ===
-float fireFlicker(float t){ return 0.75 + 0.25 * noise2(vec2(t * 9.0, 3.0)) + 0.12 * noise2(vec2(t * 27.0, 7.0)); }
+float fireFlicker(float t){ return .8 + .2 * noise2(vec2(t * 7., 3.)) + .1 * noise2(vec2(t * 23., 7.)); }
+float fbm4(vec2 p){ float a = .5, s = 0.; for (int i = 0; i < 4; i++){ s += a * noise2(p); p = p * 2.07 + 11.3; a *= .5; } return s; }
 
-// cheap 3-octave fbm, used a lot in the exterior so kept lighter than the shared 5-octave fbm2
-float fbmLo(vec2 p){ float a = 0.5, s = 0.0; for (int i = 0; i < 3; i++){ s += a * noise2(p); p = p * 2.08 + 11.3; a *= 0.5; } return s; }
+const vec3 BASE = vec3(-150., 0., 430.);     // base origin in world
+const vec3 FIREP = vec3(-135., 14., 430.);   // hangar fire (world)
 
-float sdRoundBox2(vec2 p, vec2 b, float r){ vec2 q = abs(p) - b + r; return length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - r; }
-float sdCircle2(vec2 p, float r){ return length(p) - r; }
-
-// Object 9's roofline at the base of the fire: low modules + a dome + a mast, backlit black silhouette
-float baseSil(vec2 lp){
-  float m1 = sdRoundBox2(lp - vec2(-1.05, 0.16), vec2(0.62, 0.17), 0.03);
-  float m2 = sdRoundBox2(lp - vec2(0.05, 0.24), vec2(0.85, 0.25), 0.04);
-  float m3 = sdRoundBox2(lp - vec2(1.15, 0.14), vec2(0.5, 0.15), 0.03);
-  float dome = sdCircle2(lp - vec2(0.05, 0.46), 0.24);
-  float mast = sdRoundBox2(lp - vec2(0.62, 0.95), vec2(0.018, 0.62), 0.01);
-  float d = min(m1, min(m2, m3));
-  d = min(d, dome);
+// silhouette of the base in base-local meters (x right, y up). returns sdf (m), negative inside
+float baseSDF(vec2 q, out float windows){
+  windows = 0.;
+  float d = 1e5;
+  // long modules on stilts
+  for (int i = 0; i < 3; i++){
+    float fi = float(i);
+    vec2 c = vec2(-70. + fi * 34., 7.5 + 1.5 * fi);
+    d = min(d, sdBox2(q - c, vec2(14., 3.2)));
+    d = min(d, sdBox2(vec2(mod(q.x - c.x + 3.5, 7.) - 3.5, q.y - 2.2), vec2(.35, 2.4)) + max(0., abs(q.x - c.x) - 13.));
+    // window strip
+    vec2 wq = q - c - vec2(0., .6);
+    float wx = mod(wq.x + 1.5, 3.) - 1.5;
+    if (abs(wq.x) < 12.5 && abs(wx) < .7 && abs(wq.y) < .8) windows = 1. + fi;
+  }
+  // hangar: broken arch, roof partly collapsed on the right
+  vec2 h = q - vec2(15., 0.);
+  float arch = max(length(vec2(h.x * .7, h.y)) - 16., -h.y);
+  arch = max(arch, -(h.y - 11. + .3 * (h.x - 4.) * step(4., h.x) - 2. * noise2(vec2(h.x * .6, 1.))));  // torn roof
+  d = min(d, arch);
+  // bunker with dome
+  d = min(d, sdBox2(q - vec2(50., 4.), vec2(10., 4.)));
+  d = min(d, length(q - vec2(50., 8.)) - 6.5);
+  // lattice mast with guy wires
+  float mast = sdBox2(q - vec2(-20., 35.), vec2(.9 - q.y * .008, 35.));
   d = min(d, mast);
+  for (int i = 0; i < 3; i++){
+    float fi = float(i);
+    vec2 a = vec2(-20., 20. + fi * 18.), b = vec2(-20. + (38. + fi * 10.) * (fi == 1. ? -1. : 1.), 0.);
+    vec2 pa = q - a, ba = b - a;
+    float hh = clamp(dot(pa, ba) / dot(ba, ba), 0., 1.);
+    d = min(d, length(pa - ba * hh) - .12);
+  }
   return d;
 }
 
-// procedural plume (smoke+fire column) in local coords lp (screen units, origin at base).
-// Billows and bends with a wind shear that increases with height; domain-warped for turbulence.
-// smokeMask/smokeCol are meant to be MIXED into the background (so the plume occludes the aurora
-// behind it, reading as a dark silhouette); fireCol is additive (genuinely emissive).
-void plumeColor(vec2 lp, float t, float flick, out float smokeMask, out vec3 smokeCol, out vec3 fireAdd){
-  float h = clamp(lp.y, 0.0, 2.4);
-  float wind = h * h * 0.16 + h * 0.05 + 0.05 * sin(t * 0.15);
-  vec2 sp = vec2(lp.x - wind, lp.y * 0.75);
-  vec2 warp = vec2(fbmLo(sp * 1.7 + vec2(0.0, -t * 0.3)), fbmLo(sp * 1.7 + vec2(5.2, -t * 0.22))) - 0.5;
-  float n = fbmLo(sp * 2.1 + warp * 1.3 + vec2(0.0, -t * 0.45));
-  float width = 0.38 + h * 1.15 + 0.22 * n;
-  float cx = lp.x - wind - warp.x * 0.26;
-  smokeMask = smoothstep(width, width * 0.1, abs(cx)) * smoothstep(4.2, 0.05, h) * (0.8 + 0.5 * n);
-  smokeMask = clamp(smokeMask, 0.0, 1.0);
-  float heat = smoothstep(1.1, -0.1, h);
-  smokeCol = mix(vec3(0.018, 0.018, 0.022), vec3(0.42, 0.19, 0.08), heat * (0.6 + 0.35 * n));
-  // fireball glow at the base, orange-white, flickering, small and hot
-  float fireN = fbmLo(lp * vec2(6.0, 8.0) + vec2(0.0, -t * 2.3));
-  float fireMask = smoothstep(0.14, 0.0, length(lp * vec2(1.0, 1.7)) - 0.04 * fireN);
-  vec3 fireCol = mix(vec3(2.4, 0.85, 0.15), vec3(3.6, 2.0, 0.6), fireN) * flick;
-  fireAdd = fireCol * fireMask;
+// Kharkovchanka seen from behind, local meters (x right, y up), origin at ground center
+float tractorSDF(vec2 q, out float mat){
+  mat = 0.;
+  float tracks = min(sdBox2(q - vec2(-1.8, .72), vec2(.7, .72)), sdBox2(q - vec2(1.8, .72), vec2(.7, .72))) - .05;
+  float body = sdBox2(q - vec2(0., 2.85), vec2(2.3, 1.45)) - .2;
+  float roof = sdBox2(q - vec2(0., 4.6), vec2(2.05, .12));
+  float rack = sdBox2(vec2(mod(q.x + .25, .5) - .25, q.y - 4.9), vec2(.04, .25));
+  rack = max(rack, abs(q.x) - 1.9);
+  rack = min(rack, sdBox2(q - vec2(0., 5.12), vec2(1.95, .04)));
+  float stack = sdBox2(q - vec2(1.6, 5.2), vec2(.1, .55));
+  float d = min(min(tracks, body), min(min(roof, rack), stack));
+  // gap between the tracks under the belly stays open
+  d = max(d, -sdBox2(q - vec2(0., .6), vec2(1.05, .62)));
+  // rear door with a dim interior lamp, ladder beside it
+  if (sdBox2(q - vec2(-.35, 3.), vec2(.5, .6)) < 0.) mat = 1.;
+  if (abs(q.x - .6) < .3 && q.y > 1.4 && q.y < 4.5 && (abs(abs(q.x - .6) - .25) < .04 || abs(mod(q.y, .38) - .19) < .03)) mat = 3.;
+  // track wheels (visible as lighter rings on the track ends)
+  vec2 tw = vec2(abs(q.x) - 1.8, q.y - .72);
+  if (abs(tw.x) < .6 && abs(mod(q.y, .22) - .11) < .025 && abs(tw.y) < .6) mat = 4.;   // track tread
+  // tail lights
+  if (length(q - vec2(-1.9, 1.85)) < .18 || length(q - vec2(1.9, 1.85)) < .18) mat = 2.;
+  return d;
 }
 
-// sparks / embers rising from the fire (screen space, additive)
-vec3 embers(vec2 uv, vec2 anchor, float t){
-  vec3 col = vec3(0.0);
-  for (int i = 0; i < 8; i++){
-    float fi = float(i);
-    vec2 seed = vec2(fi * 12.9, fi * 3.7);
-    float life = fract(t * 0.22 + hash21(seed));
-    vec2 start = anchor + (hash22(seed) - 0.5) * vec2(0.10, 0.02);
-    vec2 p = start + vec2((hash21(seed + 5.0) - 0.5) * 0.25, 0.0) * life
-                    + vec2(0.0, life * (0.35 + 0.25 * hash21(seed + 9.0)));
-    float d = length(uv - p);
-    float tw = 0.5 + 0.5 * sin(t * 30.0 + fi * 7.0);
-    float b = smoothstep(0.006, 0.0, d) * (1.0 - life) * tw;
-    col += vec3(3.0, 1.2, 0.3) * b;
-  }
-  return col;
+vec3 skyCol(vec3 rd, float t){
+  vec3 c = mix(vec3(.004, .006, .012), vec3(.0015, .002, .005), smoothstep(0., .5, rd.y));
+  c += stars(rd) * vec3(.8, .85, 1.) * smoothstep(.02, .15, rd.y);
+  if (rd.y > -.02) c += aurora(rd, t) * .9;
+  // horizon haze of blowing snow
+  c += vec3(.012, .016, .026) * exp(-max(rd.y, 0.) * 18.);
+  return c;
 }
 
-// ============================================================ exterior: vehicle ===
-// Kharkovchanka silhouette in local coords lp (meters, origin at ground under the vehicle)
-float vehSil(vec2 lp){
-  float track = sdRoundBox2(lp - vec2(0.0, 0.32), vec2(1.7, 0.30), 0.08);
-  float body  = sdRoundBox2(lp - vec2(-0.05, 0.80), vec2(1.25, 0.42), 0.06);
-  float cab   = sdRoundBox2(lp - vec2(0.55, 1.28), vec2(0.5, 0.30), 0.05);
-  return min(min(track, body), cab);
-}
-
-// ============================================================ exterior scene ===
 vec3 exteriorScene(vec2 fc, vec2 uv, float t){
-  setupCam();
-  vec3 rd = camRay(fc, gCamRo, vec3(0.0, 2.0, 5.0), FOCAL, 0.0);
-
+  setupCam(t);
+  vec3 rd = camDir(uv);
   float flick = fireFlicker(t);
-  vec3 fireWorld = vec3(2.6, 0.0, 42.0);
-  vec3 fp = projectPoint(fireWorld);
-  float fireScale = clamp(1.0 / max(fp.z, 1.0) * 15.0, 0.08, 0.55); // artistic scale, not literal
 
-  // ---- sky: polar night, mostly black, aurora is the only real light ----
-  vec3 sky = mix(vec3(0.0015, 0.002, 0.006), vec3(0.004, 0.006, 0.014), smoothstep(-0.1, 0.5, rd.y));
-  sky += stars(rd) * vec3(0.8, 0.85, 1.0);
-  // aurora() is a 24-tap loop; skip it for pixels well below the horizon where it would be
-  // blended out by fog anyway (ground pixels near the camera never see it)
-  if (rd.y > -0.06) sky += aurora(rd, t) * 2.2;
+  // --- tractor position: starts close on the right, drives away (+z, drifting right)
+  vec3 V = vec3(5.5 - t * .35, 0., 20. + t * 6.5);
+  vec3 vp = project(V);
+  float vScale = FOCAL / vp.z;                 // screen units per meter at the tractor
 
-  // ---- ground: dark blue-black snow, only the fire pool is warm ----
-  vec3 col = sky;
-  if (rd.y < -0.001){
-    float dist = -gCamRo.y / rd.y;
-    vec3 wp = gCamRo + rd * dist;
-    float fog = 1.0 - exp(-dist * 0.035);
-    float sn = fbmLo(wp.xz * 0.35 + vec2(t * 0.6, 0.0));
-    float sn2 = fbmLo(wp.xz * 2.4 - vec2(t * 1.3, 0.0));
-    vec3 snowCol = mix(vec3(0.014, 0.017, 0.028), vec3(0.032, 0.038, 0.058), sn) * (0.7 + 0.5 * sn2);
-    // fire glow pooling on the snow near Object 9, falls off tightly (meters, not km)
-    float dFire = distance(wp.xz, fireWorld.xz);
-    snowCol += vec3(1.2, 0.46, 0.15) * flick * exp(-dFire * 0.5) * 1.3;
-    col = mix(snowCol, sky, clamp(fog, 0.0, 1.0));
+  // --- base projection
+  vec3 bp = project(BASE);
+  float bScale = FOCAL / bp.z;
+  vec2 bq = (uv - bp.xy) / bScale;              // base-local meters
+  vec3 fp = project(FIREP);
+  vec2 fq = (uv - fp.xy) / bScale;              // fire-local meters
+
+  vec3 col;
+  float horizonY = project(vec3(0., 0., 5000.)).y;
+
+  if (rd.y < 0.){
+    // ---------------- snow ground
+    float tg = -gRo.y / rd.y;
+    vec3 p = gRo + rd * tg;
+    // sastrugi: wind-carved ridges, stretched along the wind (x)
+    vec2 sp = p.xz * vec2(.35, 1.1);
+    float h0 = fbm4(sp * .5);
+    vec2 e = vec2(.08, 0.);
+    float hx = fbm4((sp + e.xy) * .5), hz = fbm4((sp + e.yx) * .5);
+    float bump = .9 * smoothstep(20., 2., tg * .05);
+    vec3 n = normalize(vec3(-(hx - h0) * 6. * bump, 1., -(hz - h0) * 6. * bump));
+    vec3 alb = vec3(.75, .8, .88);
+    // cold ambient from the aurora sky
+    col = alb * (.028 + .02 * n.y) * vec3(.5, .75, .85);
+    // fire light on the snow
+    vec3 Lf = FIREP - p; float df = length(Lf); Lf /= df;
+    float fireI = 5000. * flick / (df * df + 8000.);
+    col += alb * vec3(1., .42, .12) * fireI * max(dot(n, Lf), 0.) * (1. + .4 * smoothstep(.4, .9, h0));
+    // tractor headlights throwing a pool ahead of it (away from camera)
+    vec2 hrel = p.xz - V.xz;
+    float along = hrel.y - 14.;
+    float cone = smoothstep(along * .28 + 1.5, along * .12, abs(hrel.x - along * .2)) * smoothstep(0., 4., along) * exp(-max(along, 0.) * .06);
+    col += alb * vec3(.9, .85, .7) * .07 * cone * n.y;
+    // red tail-light spill on the snow right behind it
+    float dt = length((p - V - vec3(0., 0., -2.5)).xz);
+    col += alb * vec3(1., .05, .03) * .12 * exp(-dt * .5) * step(p.z, V.z);
+    // track ruts leading to the tractor
+    vec2 rel = p.xz - vec2(5.5 - (p.z - 20.) * (.35 / 6.5), p.z);  // follows the tractor's path
+    float rut = (smoothstep(.5, .1, abs(abs(rel.x) - 1.75)) ) * step(p.z, V.z - 2.) * step(0., p.z);
+    col *= 1. - .5 * rut;
+    // glitter
+    float g = hash21(floor(p.xz * 30.));
+    col += step(.997, g) * fireI * .6 * vec3(1., .6, .3) * smoothstep(60., 5., tg);
+    // distance haze
+    float fogA = 1. - exp(-tg * .0022);
+    col = mix(col, skyCol(vec3(rd.x, .001, rd.z), t) + vec3(.03, .012, .004) * flick * exp(-length(uv - fp.xy) * 5.), fogA);
+  } else {
+    col = skyCol(rd, t);
   }
 
-  // ---- Object 9: base silhouette + billowing plume (billboarded at fireWorld) ----
-  vec2 lpFire = (uv - fp.xy) / fireScale;
-  lpFire.y += 0.05;
-  if (abs(lpFire.x) < 4.0 && lpFire.y > -0.5 && lpFire.y < 2.8){
-    float smokeMask; vec3 smokeCol, fireAdd;
-    plumeColor(lpFire, t, flick, smokeMask, smokeCol, fireAdd);
-    col = mix(col, smokeCol, clamp(smokeMask, 0.0, 1.0));
-    col += fireAdd;
-    float bd = baseSil(lpFire);
-    float bMask = smoothstep(0.02, -0.012, bd);
-    col = mix(col, vec3(0.003, 0.0032, 0.0035), bMask);
-    float bRim = smoothstep(0.025, 0.0, abs(bd)) * (1.0 - bMask);
-    col += vec3(0.9, 0.42, 0.16) * bRim * flick * 0.18;
+  // ---------------- smoke plume (behind the silhouette)
+  {
+    float hgt = fq.y;                            // meters above the fire
+    if (hgt > -5. && hgt < 520.){
+      float bend = hgt * hgt * .0009 + hgt * .08; // wind shear pushes it right
+      float cx = fq.x - bend;
+      float w = 14. + hgt * .38;
+      vec2 sp = vec2(cx, hgt - t * 9.) * (.9 / w) + vec2(0., hgt * .004);
+      float warp = fbm4(sp * 1.3 + vec2(0., -t * .05));
+      float dens = fbm4(sp * 1.8 + warp * 1.4);
+      float body = smoothstep(1., .45, abs(cx) / w + (dens - .5) * 1.1);
+      body *= smoothstep(-5., 10., hgt) * smoothstep(520., 250., hgt);
+      float a = clamp(body * (.6 + dens), 0., 1.) * .97;
+      float lit = exp(-max(hgt, 0.) / 28.) * flick;
+      vec3 smoke = vec3(.008, .007, .007) * (.4 + dens) + vec3(.9, .28, .06) * lit * (.2 + dens * .9) + vec3(.05, .016, .004) * smoothstep(-.4, .6, -cx / w) * exp(-max(hgt, 0.) / 160.);
+      col = mix(col, smoke, a);
+    }
   }
-  if (abs(uv.x - fp.x) < 0.35 && uv.y < fp.y + 0.3){
-    col += embers(uv, fp.xy + vec2(0.0, 0.02), t) * fireScale;
+
+  // ---------------- base silhouette with fire rim and burning windows
+  float win;
+  float bd = baseSDF(bq, win);
+  if (bd < 0.){
+    vec3 sil = vec3(.004, .003, .003);
+    // rim from the fire behind
+    float rim = exp(bd * 2.5) * exp(-length(bq - vec2(15., 10.)) * .035) * .5;
+    sil += vec3(1., .4, .1) * rim * flick;
+    if (win > 0.){
+      float wf = .5 + .5 * noise2(vec2(t * 5. + win * 7., bq.x * .3));
+      float burning = step(.35, hash11(floor((bq.x + 1.5) / 3.) + win * 13.));
+      sil = mix(sil, vec3(2.2, .8, .2) * wf * burning + vec3(.02, .005, 0.), .9);
+    }
+    col = sil;
+  } else {
+    // glow halo just outside the silhouette edges near the fire
+    col += vec3(1., .35, .08) * .03 * exp(-bd * .5) * exp(-abs(bq.x - 15.) * .04) * flick;
   }
 
-  // ---- Kharkovchanka, receding across the plateau ----
-  float vz = mix(12.0, 52.0, smoothstep(0.0, 7.0, t));
-  vec3 vehWorld = vec3(-2.2, 0.0, vz);
-  vec3 vp = projectPoint(vehWorld);
-  float vScale = 1.0 / max(vp.z, 1.0) * FOCAL;
-  vec2 lv = (uv - vp.xy) / vScale;
-  float vd = vehSil(lv);
-  float vMask = smoothstep(0.015, -0.008, vd);
-  vec3 vehCol = vec3(0.0);
-  col = mix(col, vehCol, vMask);
-  // faint cool rim from the aurora/starlight catching the top edge, so the silhouette reads
-  float rim = smoothstep(0.05, 0.0, abs(vd)) * (1.0 - vMask);
-  col += vec3(0.10, 0.20, 0.20) * rim * 0.22;
+  // ---------------- flames licking out of the torn hangar roof
+  {
+    vec2 q = fq;
+    if (abs(q.x) < 30. && q.y > -12. && q.y < 40.){
+      float n = fbm4(vec2(q.x * .12, q.y * .07 - t * 1.6));
+      float shape = smoothstep(26., 4., abs(q.x) + q.y * .3) * smoothstep(38., 0., q.y + n * 20.) * smoothstep(-12., -4., q.y);
+      float f = smoothstep(.35, .75, n * shape + shape * .35);
+      col += mix(vec3(1.6, .35, .05), vec3(4., 2.2, .8), f * f) * f * flick * 1.4;
+    }
+    // bloom-ish glow around the fire
+    col += vec3(1., .35, .07) * .12 * flick * exp(-length(fq * vec2(1., .7)) * .03);
+  }
 
-  // tail lights at the rear-lower corners, + a faint warm exhaust glow underneath
-  vec2 tl0 = vec2(-1.5, 0.34), tl1 = vec2(1.4, 0.34);
-  float lampFlicker = 0.82 + 0.18 * noise2(vec2(t * 5.0, 1.0));
-  float dl0 = length(lv - tl0), dl1 = length(lv - tl1);
-  vec3 tail = vec3(3.2, 0.07, 0.04) * (exp(-dl0 * 55.0) + exp(-dl1 * 55.0)) * lampFlicker;
-  tail += vec3(1.6, 0.08, 0.04) * (exp(-dl0 * 10.0) + exp(-dl1 * 10.0)) * 0.3;
-  float dExh = length(lv - vec2(0.0, 0.15));
-  vec3 headglow = vec3(0.7, 0.5, 0.3) * exp(-dExh * 9.0) * 0.15;
-  col += (tail + headglow) * vScale * 2.2;
-
-  // ---- blown snow, foreground drift (screen space, additive streaks) ----
-  for (int i = 0; i < 3; i++){
+  // ---------------- embers rising and blowing right
+  for (int i = 0; i < 10; i++){
     float fi = float(i);
-    vec2 dir = normalize(vec2(0.85, -0.25));
-    vec2 sc = uv * (18.0 + fi * 9.0) + dir * t * (2.2 + fi * 1.3) + fi * 31.7;
-    vec2 cell = floor(sc), f = fract(sc) - 0.5;
-    float h = hash21(cell + fi * 7.0);
-    vec2 off = (hash22(cell + fi) - 0.5) * 0.6;
-    float streak = smoothstep(0.05, 0.0, length((f - off) * vec2(1.0, 4.0))) * step(0.82, h);
-    col += vec3(0.5, 0.55, 0.6) * streak * (0.5 - fi * 0.12);
+    float life = fract(t * .23 + hash11(fi * 3.1));
+    vec2 ep = vec2((hash11(fi) - .5) * 30. + life * life * 90., life * 180. + 5.);
+    ep.x += 6. * sin(t * 2. + fi);
+    vec2 d2 = (fq - ep) * bScale;
+    col += vec3(2., .7, .15) * smoothstep(.0025, 0., length(d2)) * (1. - life);
   }
 
+  // ---------------- the tractor
+  {
+    vec2 tq = (uv - vp.xy) / vScale;
+    float m;
+    float td = tractorSDF(tq, m);
+    // snow churned up behind the tracks
+    float spray = fbm4(vec2(tq.x * .6, tq.y * .9 + t * 4.)) * smoothstep(3.5, 0., tq.y) * smoothstep(3.2, 1.2, abs(tq.x)) ;
+    col += vec3(.35, .12, .08) * spray * .08;
+    if (td < 0.){
+      vec3 c = vec3(.01, .009, .01);
+      // fire rim on the left edge (fire is to the left, far away)
+      float mm;
+      float leftOut = step(0., tractorSDF(tq - vec2(.22, 0.), mm));   // edge facing the fire (left)
+      float topOut = step(0., tractorSDF(tq + vec2(0., .15), mm));    // edge facing the sky
+      c += vec3(1., .42, .12) * .1 * leftOut * flick;
+      c += vec3(.12, .2, .25) * .06 * topOut;
+      // orange paint just catching it
+      c += vec3(.018, .005, .002) * smoothstep(1.4, 4.4, tq.y) * (.6 + .4 * noise2(tq * 3.));
+      if (m == 3.) c += vec3(.012, .01, .009) + vec3(1., .42, .12) * .02 * flick;
+      if (m == 4.) c *= .5;
+      if (m == 1.){
+        c = vec3(.9, .55, .22) * .22 * (.8 + .2 * noise2(vec2(t * 3., 1.)));
+        vec2 hq = tq - vec2(-.3, 2.95);                                    // a survivor looking back
+        float head = min(length(hq * vec2(1., .85)) - .2, sdBox2(hq + vec2(0., .5), vec2(.36, .28)) - .1);
+        if (head < 0.) c = vec3(.012, .008, .006);
+      }
+      if (m == 2.) c = vec3(3.5, .18, .08);
+      col = c;
+    }
+    // tail light glow + exhaust
+    col += vec3(1., .04, .02) * .045 * (exp(-length(tq - vec2(-1.9, 1.9)) * 1.2) + exp(-length(tq - vec2(1.9, 1.9)) * 1.2));
+    vec2 eq = tq - vec2(1.6, 5.6);
+    float ex = fbm4(vec2(eq.x * .8 - t * 2., eq.y * .6 - t * 1.5)) * smoothstep(0., 1.5, eq.y) * smoothstep(3. + eq.y, 0., abs(eq.x + eq.y * .6)) * smoothstep(9., 2., eq.y);
+    col = mix(col, vec3(.03, .02, .02), clamp(ex * .6, 0., .6));
+  }
+
+  // ---------------- blowing snow streaks in the foreground (screen space, three depths)
+  for (int L = 0; L < 3; L++){
+    float fl = float(L);
+    float sc = 30. + fl * 28.;
+    vec2 sp = uv * sc * vec2(.18, 1.) + vec2(t * (2.6 + fl * 1.3), t * .2 + fl * 7.);
+    vec2 id = floor(sp); vec2 fr = fract(sp) - .5;
+    float h = hash21(id + fl * 19.);
+    if (h > .82){
+      vec2 o = (hash22(id) - .5) * .6;
+      float s = smoothstep(.07, 0., length((fr - o) * vec2(.35, 3.)));
+      col += s * (.035 + .05 * fireFlicker(t) * step(uv.x, fp.x + .3)) * vec3(.8, .8, .85) * (.4 + fl * .3);
+    }
+  }
+  // near-ground drift haze
+  if (rd.y < .02){
+    float drift = fbm4(vec2(uv.x * 3. + t * 1.4, uv.y * 14.));
+    col += vec3(.02, .025, .035) * drift * smoothstep(.02, -.25, rd.y) * .8;
+  }
   return col;
 }
 

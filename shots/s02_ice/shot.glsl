@@ -254,19 +254,20 @@ vec3 render(vec2 fc){
     for (int li = 0; li < 2; li++){
       vec3 lp = li == 0 ? lightL : lightR;
       vec3 L = lp - p; float ld = length(L); L /= ld;
-      float atten = 1.0 / (1.0 + ld * ld * .03);
+      // NOTE: spotLight() already bakes distance falloff into its return value — do not also
+      // multiply the coned terms by a separate atten, or the light dies by d^4 at range.
       float cone = spotLight(p, lp, aimDir, .78, .93);
       float dif = max(dot(n, L), 0.0);
       float spec = pow(max(dot(reflect(-L, n), -rd), 0.0), 24.0);
-      vec3 lc = vec3(1.0, .82, .55) * cone * dif * atten * 3.6;
+      vec3 lc = vec3(1.0, .82, .55) * cone * dif * 20.0;
       // soft omnidirectional scatter: blowing snow throws headlight glow past the beam edge,
       // and lets the vehicle's OWN lights read on its own body even outside the strict cone.
-      // Falls off much faster than the coned beam so it stays local to the vehicle instead of
-      // washing the whole far ground plane it's driving across.
-      float scatterAtten = 1.0 / (1.0 + ld * ld * .25);
+      // Its own gentler falloff keeps it local to the vehicle instead of washing the whole
+      // far ground plane it's driving across.
+      float scatterAtten = 1.0 / (1.0 + ld * ld * .12);
       float scatter = scatterAtten * (mat == M_SNOW ? 0.55 : 0.9);
-      col3 += albedo * (lc + vec3(1.0, .8, .55) * scatter) + spec * cone * atten * 1.4;
-      col3 += sparkle * cone * atten * vec3(1.0, .92, .8);
+      col3 += albedo * (lc + vec3(1.0, .8, .55) * scatter) + spec * cone * 5.0;
+      col3 += sparkle * cone * vec3(1.0, .92, .8);
     }
     if (mat == V_LAMP) col3 = vec3(1.0, .86, .55) * 6.0;
     if (hitVehicle) col3 += vec3(1.0, .55, .22) * vehWindowGlow(pl) * 0.22;

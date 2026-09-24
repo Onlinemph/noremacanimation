@@ -22,14 +22,11 @@ vec2 sdDoorLocal(vec3 q){
   rib = max(rib, abs(q.x - (HOLEHW+.06)) - HOLEHW);
   rib = max(rib, abs(q.z) - t - .012);
   r = opU(r, vec2(rib, M_STEEL));
-  // wheel + spokes
+  // wheel (spokes faked cheaply via angular modulo instead of a primitive loop)
   vec3 wc = q - vec3(HOLEHW+.06, 0., t + .05);
-  float wheel = sdTorus(vec3(wc.x, wc.y, wc.z), vec2(.26, .028));
-  for (int i = 0; i < 5; i++){
-    float a = float(i) / 5. * TAU;
-    vec3 sp = wc; sp.xy = rot2(a) * sp.xy;
-    wheel = min(wheel, sdCapsule(sp, vec3(0.), vec3(.24, 0., 0.), .02));
-  }
+  float wa = atan(wc.y, wc.x);
+  float spokeMod = abs(mod(wa, PI/2.5) - PI/5.) * length(wc.xy);
+  float wheel = min(sdTorus(wc, vec2(.26, .028)), max(spokeMod - .018, abs(wc.z) - .018) );
   wheel = min(wheel, sdCylZ(wc, .05, .05));
   r = opU(r, vec2(wheel, M_GUNMETAL));
   // hinges at x=0 side
@@ -86,29 +83,18 @@ vec2 map(vec3 p){
     float plate = sdBox(sp, vec3(.85, .28, .03));
     r = opU(r, vec2(plate, 20.0));
   }
-  // researcher silhouettes near camera, off to the sides
+  // researcher silhouettes near camera, off to the sides (single cheap capsule each)
   for (int i = 0; i < 2; i++){
     float sg = i == 0 ? -1. : 1.;
     vec3 rp = p - vec3(sg*1.55, 0., -.9 + .2*sg);
-    float body = sdCapsule(rp, vec3(0.,.15,0.), vec3(0.,1.55,0.), .26);
-    float hood = sdEllipsoid(rp - vec3(0.,1.65,.02), vec3(.19,.21,.21));
-    r = opU(r, vec2(smin(body,hood,.08), 21.0));
+    r = opU(r, vec2(sdCapsule(rp, vec3(0.,.15,0.), vec3(0.,1.85,0.), .27), 21.0));
   }
   return r;
 }
 
-vec3 nrm(vec3 p){ vec2 e=vec2(.0015,0.); return normalize(vec3(
-  map(p+e.xyy).x-map(p-e.xyy).x, map(p+e.yxy).x-map(p-e.yxy).x, map(p+e.yyx).x-map(p-e.yyx).x)); }
-
-float shadow(vec3 ro, vec3 rd, float maxd){
-  float res = 1., t = .06;
-  for (int i = 0; i < 9; i++){
-    float h = map(ro + rd*t).x;
-    res = min(res, 8.*h/t);
-    t += clamp(h, .07, .6);
-    if (h < .002 || t > maxd) break;
-  }
-  return clamp(res, 0., 1.);
+vec3 nrm(vec3 p){                     // tetrahedron trick: 4 taps instead of 6
+  const vec2 e = vec2(1.,-1.) * .0015;
+  return normalize(e.xyy*map(p+e.xyy).x + e.yyx*map(p+e.yyx).x + e.yxy*map(p+e.yxy).x + e.xxx*map(p+e.xxx).x);
 }
 
 vec3 matAlbedo(float m, vec3 p, vec3 n){
@@ -137,9 +123,14 @@ vec3 matAlbedo(float m, vec3 p, vec3 n){
   vec3 conc = vec3(.13,.13,.125) * (.6+.5*fbm3lo(p*2.1));
   float frostc = smoothstep(.45,.9, fbm3lo(p*8.+3.));
   conc = mix(conc, vec3(.8,.87,.93), frostc*.5);
-  vec2 uvb = p.xz*.6 + 5.;
-  float blood = bloodSplat(uvb - vec2(.2,-1.3), 4.7) * (1.-outside);
-  conc = mix(conc, vec3(.10,.015,.02), blood*.75);
+  // bloodSplat() is a 10-iteration loop — gate it to near the patch instead of paying for it
+  // on every floor pixel in the frame.
+  vec2 bloodCenter = vec2(-.35, 3.1);
+  float bloodGate = smoothstep(1.8, 0., length(p.xz - bloodCenter)) * (1.-outside);
+  if (bloodGate > .01){
+    float blood = bloodSplat((p.xz - bloodCenter) * 1.1, 4.7) * bloodGate;
+    conc = mix(conc, vec3(.10,.015,.02), blood*.75);
+  }
   vec3 snow = vec3(.75,.8,.88) * (.7+.5*fbm3lo(p*3.));
   return mix(conc, snow, outside);
 }
@@ -161,10 +152,10 @@ vec3 render(vec2 fc){
   vec3 rd = camRay(fc, ro, ta, 1.65, sway*.01);
 
   float d = 0.; vec2 h; vec3 p;
-  for (int i = 0; i < 95; i++){
+  for (int i = 0; i < 40; i++){
     p = ro + rd*d; h = map(p);
-    if (h.x < .0012 || d > 45.) break;
-    d += h.x * .9;
+    if (h.x < .003 || d > 45.) break;
+    d += h.x * 1.08;
   }
 
   float power = uP[2], beacon = uP[3];
@@ -194,8 +185,7 @@ vec3 render(vec2 fc){
       vec3 L = p - flPos[i];
       float dist = length(L);
       float cone = spotLight(p, flPos[i], dir, .78, .96) * flashCookie(p, flPos[i], dir);
-      float sh2 = cone > .003 ? shadow(p, -normalize(L)/dist, dist) : 1.;
-      col += alb * max(dot(n, -L/dist),0.) * cone * sh2 * flCol * 3.4;
+      col += alb * max(dot(n, -L/dist),0.) * cone * flCol * 3.4;
     }
 
     // red rotating beacon
@@ -215,32 +205,33 @@ vec3 render(vec2 fc){
     col = background(rd, iTime);
   }
 
-  // --- cheap volumetric fog / light shafts along the primary ray ---
+  // --- cheap volumetric fog / light shafts along the primary ray (few steps, one dominant light) ---
   vec3 fog = vec3(0.);
-  float marchMax = min(d, 9.0);
-  int STEPS = 8;
+  float marchMax = min(d, 8.0);
+  const int STEPS = 2;
   float stepLen = marchMax / float(STEPS);
   float dith = hash21(fc + iTime*90.);
+  float bAng = iTime * 2.6;
+  vec3 bDir = vec3(sin(bAng), -.1, cos(bAng));
+  vec3 bPos = vec3(0., ROOMH-.2, .5);
   for (int i = 0; i < STEPS; i++){
     float s = (float(i) + dith) * stepLen;
     if (s > marchMax) break;
     vec3 fp = ro + rd*s;
     float density = .06 + .1*smoothstep(ZDOOR-2.5, ZDOOR+1., fp.z)*clamp(doorAngle()/1.3,0.,1.);
     density *= .5 + .5*fbm3lo(fp*.8 + vec3(0.,-iTime*.3,0.));
-    for (int j = 0; j < 2; j++){
-      vec3 L = fp - flPos[j];
-      float dist = length(L);
-      float sweep = sin(iTime*.55 + flPh[j]) * .5;
-      vec3 dir = normalize(vec3(sweep*.8 + (j==0?.35:-.3), -.25 - .1*sin(iTime*.31+flPh[j]), 1.));
-      float cone = spotLight(fp, flPos[j], dir, .8, .97);
-      float ph = hgPhase(dot(rd, normalize(-L)), .5);
-      fog += flCol * cone * ph * density * stepLen * 1.6;
+    // one representative flashlight beam (close enough visually, half the cost)
+    vec3 L = fp - flPos[0];
+    float dist = length(L);
+    float sweep = sin(iTime*.55) * .5;
+    vec3 dir = normalize(vec3(sweep*.8 + .35, -.25 - .1*sin(iTime*.31), 1.));
+    float cone = spotLight(fp, flPos[0], dir, .8, .97);
+    float ph = hgPhase(dot(rd, normalize(-L)), .5);
+    fog += flCol * cone * ph * density * stepLen * 2.4;
+    if (beacon > .01){
+      float bcone = spotLight(fp, bPos, bDir, .5, .92) * beacon;
+      fog += vec3(1.1,.04,.02) * bcone * density * stepLen * 1.1;
     }
-    float bAng = iTime * 2.6;
-    vec3 bDir = vec3(sin(bAng), -.1, cos(bAng));
-    vec3 bPos = vec3(0., ROOMH-.2, .5);
-    float bcone = spotLight(fp, bPos, bDir, .5, .92) * beacon;
-    fog += vec3(1.1,.04,.02) * bcone * density * stepLen * 1.1;
   }
   col += fog;
 

@@ -156,7 +156,7 @@ vec2 mapInterior(vec3 p, float t){
 }
 
 // ---------------- exterior map (t >= EXT_T) ----------------
-vec3 fireCenter(){ return vec3(0., 3.0, DOOR_Z + 1.5); }
+vec3 fireCenter(){ return vec3(0., 2.6, DOOR_Z + 0.8); }
 
 vec2 mapExterior(vec3 p, float t){
   vec2 r = vec2(1e5, 0.0);
@@ -164,9 +164,13 @@ vec2 mapExterior(vec3 p, float t){
   float snow = p.y - (fbm3lo(p*0.25 + vec3(0.,0.,3.))*0.25 - 0.05);
   r = opU(r, vec2(snow, H_SNOW));
 
-  // low dark hangar silhouette block behind, with a torn doorway glow
-  vec3 hc = vec3(0., ROOM_CEIL*0.5, DOOR_Z + 2.0);
-  float building = sdRoundBox(p - hc, vec3(ROOM_W+1.0, ROOM_CEIL*0.5, 3.0), 0.1);
+  // low dark hangar silhouette block behind (matches the interior room footprint,
+  // its near face is the door wall at DOOR_Z), with a torn doorway the fire erupts from
+  vec3 hc = vec3(0., ROOM_CEIL*0.5, DOOR_Z - 13.0);
+  float building = sdRoundBox(p - hc, vec3(ROOM_W+1.0, ROOM_CEIL*0.5, 13.0), 0.1);
+  // torn doorway gap punched through the near face
+  float gap = sdRoundBox(p - vec3(0., ROOM_CEIL*0.42, DOOR_Z), vec3(1.9, ROOM_CEIL*0.42, 0.6), 0.1);
+  building = smax(building, -gap, 0.05);
   r = opU(r, vec2(building, H_WALL));
 
   // debris chunks thrown by the blast
@@ -295,8 +299,8 @@ vec3 shade(vec2 h, vec3 p, vec3 n, vec3 rd, vec3 keyPos, vec3 keyCol, float keyI
 
   // cold ambient fill
   vec3 fillDir = vec3(0., 1., -0.2);
-  col += albedo * max(dot(n, normalize(fillDir)), 0.0) * (ext ? vec3(.03,.035,.045) : vec3(.008,.009,.012));
-  col += albedo * (ext ? vec3(.01,.011,.014) : vec3(.004,.0045,.006));
+  col += albedo * max(dot(n, normalize(fillDir)), 0.0) * (ext ? vec3(.03,.035,.045) : vec3(.014,.016,.02));
+  col += albedo * (ext ? vec3(.01,.011,.014) : vec3(.008,.009,.011));
 
   return col;
 }
@@ -312,12 +316,17 @@ vec3 render(vec2 fc){
     ro = vec3(mix(-2.6,-1.2,k), mix(6.4,5.8,k), mix(3.0, 6.5, k));
     ta = vec3(0.3, 1.6, mix(11.0, DOOR_Z-2.0, k*0.4));
     focal = 1.55;
+  } else if (t < 8.8){
+    // low angle near the tracks, tracking alongside as it accelerates
+    float k = clamp((t-5.0)/3.8, 0., 1.);
+    ro = vc + vec3(mix(-3.6,-3.0,k), 0.65, mix(-3.0,-3.8,k));
+    ta = vc + vec3(0.2, 1.2, 2.6);
+    focal = mix(1.8, 1.6, k);
   } else if (t < 11.0){
-    // low angle near the tracks, close to the vehicle as it rams the doors
-    float k = clamp((t-5.0)/6.0, 0., 1.);
-    ro = vc + vec3(mix(-2.6,-1.8,k), 0.45, mix(-1.6,-3.4,k));
-    ta = vc + vec3(0.1, 1.2, 3.0);
-    focal = mix(2.0, 1.7, k);
+    // pulled back low 3/4 angle: nose, doors, and the tear all in frame
+    ro = vec3(-4.8, 2.0, 16.5);
+    ta = vec3(-0.3, 1.7, DOOR_Z + 0.3);
+    focal = 1.35;
   } else {
     // exterior: camera outside, looking back at the burning hangar as the tractor passes
     float k = clamp((t-11.0)/7.0, 0., 1.);
@@ -368,7 +377,7 @@ vec3 render(vec2 fc){
           float sg = s == 0 ? -1. : 1.;
           vec3 lc = vec3(sg*(ROOM_W-0.6), 2.85, lz);
           float ld = length(lc-p);
-          col += vec3(1.0,.5,.12) * (1.0/(1.0+ld*ld*0.5)) * 0.55 * max(dot(n, normalize(lc-p)),0.0);
+          col += vec3(1.0,.5,.12) * (1.0/(1.0+ld*ld*0.22)) * 1.1 * max(dot(n, normalize(lc-p)),0.0);
         }
       }
     }

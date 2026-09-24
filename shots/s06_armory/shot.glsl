@@ -88,13 +88,13 @@ vec2 map(vec3 p){
 
   // ---- table ----
   vec3 tc = TABLE_C;
-  vec2 top = vec2(sdRoundBox(p - (tc + vec3(0., TABLE_TOP - 0.04, 0.)), vec3(0.55, 0.04, 0.34), 0.01), M_WOOD);
+  vec2 top = vec2(sdRoundBox(p - (tc + vec3(0., TABLE_TOP - 0.04, 0.)), vec3(0.55, 0.04, 0.34), 0.01), M_STEEL);
   r = opU(r, top);
   for (int i = 0; i < 4; i++){
     float sx = i < 2 ? -1. : 1.;
     float sz = mod(float(i), 2.) < .5 ? -1. : 1.;
     vec3 lc = tc + vec3(sx * 0.48, (TABLE_TOP - 0.08) * 0.5, sz * 0.28);
-    r = opU(r, vec2(sdCylY(p - lc, 0.028, (TABLE_TOP - 0.08) * 0.5), M_WOOD));
+    r = opU(r, vec2(sdCylY(p - lc, 0.028, (TABLE_TOP - 0.08) * 0.5), M_STEEL));
   }
 
   // ---- KS-23 on the table ----
@@ -139,6 +139,10 @@ vec2 map(vec3 p){
   vec3 bp = bulbPos();
   r = opU(r, vec2(sdCapsule(p, anchor, bp - vec3(0.,0.05,0.), 0.004), MI_CORD));
   r = opU(r, vec2(sdSphere(p - bp, 0.035), MI_BULB));
+  // enamel industrial lampshade over the bulb
+  vec3 lq = p - bp - vec3(0., .1, 0.);
+  float shade = max(abs(length(lq) - .17) - .004, lq.y + .06);
+  r = opU(r, vec2(shade, M_STEEL));
 
   return r;
 }
@@ -178,7 +182,10 @@ float shadow(vec3 ro, vec3 rd, float maxT){
 
 vec3 wallAlbedo(vec3 p){
   float n = fbm3lo(p * 3.5);
-  vec3 base = mix(vec3(.60,.58,.52), vec3(.42,.41,.37), n);          // dirty cream plaster
+  vec3 base = mix(vec3(.36,.34,.30), vec3(.25,.24,.21), n);          // dirty cream plaster
+  vec3 green = mix(vec3(.09,.13,.11), vec3(.06,.09,.08), n);        // institutional green dado
+  base = mix(green, base, smoothstep(1.18, 1.2, p.y));
+  base *= 1. - .6 * smoothstep(.03, .0, abs(p.y - 1.2));           // painted dividing stripe
   base *= 0.8 + 0.4 * fbm3lo(p * 12.0);                              // grime speckle
   vec2 uv = vec2(1.0 - (p.x - ROOM_L) / (ROOM_R - ROOM_L), p.y / ROOM_CEIL);
   vec4 tex = texture(iTex0, uv);
@@ -216,6 +223,7 @@ vec3 crateAlbedo(vec3 p, vec3 n){
   return mix(wood, tex.rgb, tex.a*0.9);
 }
 
+vec3 gFlashPos, gFlashDir;
 vec3 shade(vec2 h, vec3 p, vec3 n, vec3 rd){
   float m = h.y;
   vec3 albedo = vec3(.4);
@@ -237,7 +245,7 @@ vec3 shade(vec2 h, vec3 p, vec3 n, vec3 rd){
   else if (m == MI_BRASS) { albedo = vec3(.62,.48,.20); rough = 0.15; }
   else if (m == MI_HULL)  { albedo = vec3(.46,.07,.045); rough = 0.4; }
   else if (m == MI_BAND)  { albedo = vec3(.03,.03,.03); rough = 0.5; }
-  else if (m == M_GUNMETAL) { albedo = gunAlbedo(m, p); rough = 0.18; }
+  else if (m == M_GUNMETAL) { albedo = vec3(.028,.032,.042) * (.8 + .4 * noise3(p * 200.)); rough = 0.14; }
   else if (m == M_GORE) albedo = goreColor(p);
   else if (m == MI_CORD) { albedo = vec3(.02); rough = 0.8; }
   else if (m == MI_BULB) { emissive = 1.0; emitCol = vec3(1.0,.78,.45)*6.0; albedo = vec3(1.,.9,.7); }
@@ -248,19 +256,31 @@ vec3 shade(vec2 h, vec3 p, vec3 n, vec3 rd){
   vec3 bp = bulbPos();
   vec3 L = bp - p; float ld = length(L); L /= ld;
   float ndl = max(dot(n, L), 0.0);
-  float atten = 1.0 / (1.0 + ld*ld*2.6);           // hard falloff: a single hot bare bulb
+  float atten = 1.0 / (1.0 + ld*ld*2.6);           // hard falloff: a single hot bulb
+  atten *= smoothstep(.45, .75, L.y);    // lampshade: light only spills downward
   float sh = shadow(p + n*0.02, L, ld);
   vec3 lightCol = vec3(1.0, .82, .58) * 4.0;
 
   // near-black ambient: only a whisper of cold bounce, keeps the room genuinely dark
   vec3 fill = vec3(.028,.034,.045) * (0.5 + 0.5*max(dot(n, vec3(0.,0.3,-1.)),0.0));
+  // warm bounce from the lit bench and floor, fading with distance from the light pool
+  vec3 pool = vec3(bp.x, TABLE_TOP, bp.z);
+  fill += vec3(.16, .11, .07) * (.35 + .65 * max(-n.y * .5 + .5, 0.)) / (1. + dot(p - pool, p - pool) * 1.6);
 
   vec3 h2 = normalize(L - rd);
   float spNarrow = pow(max(dot(n,h2),0.0), mix(220.0,40.0,rough));
   float spWide   = pow(max(dot(n,h2),0.0), mix(40.0,8.0,rough)) * 0.25;
   float spec = (spNarrow + spWide) * (1.0 - rough*0.5);
 
-  vec3 col = albedo * (ndl * atten * sh * lightCol + fill) + spec * lightCol * sh;
+  // survivors' flashlight: cold beam sweeping the room
+  vec3 Lf = gFlashPos - p; float lfd = length(Lf); Lf /= lfd;
+  float fl = spotLight(p, gFlashPos, gFlashDir, .93, .985) * mix(1., flashCookie(p, gFlashPos, gFlashDir), .35) * 1.2 * max(dot(n, Lf), 0.);
+  fill += vec3(.55, .65, .8) * fl;
+  vec3 col = albedo * (ndl * atten * sh * lightCol + fill) + spec * lightCol * sh * atten * 2.5 * (m == M_GUNMETAL || m == MI_BRASS ? 1.6 : 1.0);
+  if (m == M_GUNMETAL){
+    float fr = pow(1. - max(dot(n, -rd), 0.), 4.);
+    col += vec3(.05, .06, .08) * fr + vec3(1., .8, .55) * .06 * atten * pow(max(dot(reflect(rd, n), L), 0.), 6.);
+  }
   return col;
 }
 
@@ -273,22 +293,26 @@ vec3 render(vec2 fc){
     float ke = smoothstep(0., 1., k);
     vec3 ro0 = vec3(-0.30, 1.18, -1.75), ta0 = vec3(0.10, 0.95, 1.05);
     float ang1 = mix(0.05, 0.40, k);
-    float rad1 = 0.80;
-    vec3 ro1 = TABLE_C + vec3(sin(ang1)*rad1, TABLE_TOP + 0.30, -cos(ang1)*rad1);
+    float rad1 = 1.05;
+    vec3 ro1 = TABLE_C + vec3(sin(ang1)*rad1, TABLE_TOP + 0.42, -cos(ang1)*rad1);
     vec3 ta1 = vec3(TABLE_C.x, TABLE_TOP + 0.02, TABLE_C.z);
     ro = mix(ro0, ro1, ke);
     ta = mix(ta0, ta1, ke);
-    focal = mix(0.95, 2.2, ke);
+    focal = mix(0.95, 2.0, ke);
   } else {
     ro = vec3(0.10, 1.30, -1.25);
     ta = vec3(0.05, 0.95, 0.85);
     focal = 1.55;
   }
   vec3 rd = camRay(fc, ro, ta, focal, 0.0);
+  gFlashPos = ro + vec3(.25, -.15, .1);
+  float sweep = smoothstep(0., 5.5, t);
+  vec3 ft = t < 6.0 ? vec3(mix(-.9, .9, sweep) + .05 * sin(t * 3.1), 1.35 + .1 * sin(t * 1.7), ROOM_BACK) : vec3(.3, 1.2, ROOM_BACK);
+  gFlashDir = normalize(ft - gFlashPos);
 
   float d = 0.0; vec2 h;
   bool hitAny = false;
-  for (int i = 0; i < 68; i++){
+  for (int i = 0; i < 56; i++){
     vec3 p = ro + rd*d;
     h = map(p);
     if (h.x < 0.002 * max(d,1.0)) { hitAny = true; break; }
@@ -320,7 +344,7 @@ vec3 render(vec2 fc){
     float sd = ft * min(d, 3.2);
     vec3 sp = ro + rd*sd;
     vec3 L = bp - sp; float ld = length(L);
-    float sc = 1.0/(1.0+ld*ld*2.2);
+    float sc = 1.0/(1.0+ld*ld*2.2) * smoothstep(.55, .8, L.y / ld) * 1.2;
     vol += sc;
   }
   vol *= vec3(1.0,.75,.42) * 0.010;

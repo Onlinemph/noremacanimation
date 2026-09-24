@@ -44,6 +44,7 @@ function dustOpacity(t) {
 export default {
   duration: 10,
   fps: 24,
+  sceneScale: 0.5,
 
   params(t) {
     return [doorAngle(t), lockBar(t), powerOn(t), beaconOn(t), dustOpacity(t)];

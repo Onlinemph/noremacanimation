@@ -134,7 +134,9 @@ vec2 evalFightMonster(int i, vec3 p, float t){
   float bound = sdCapsule(lp, vec3(0, .2, 0), vec3(0, 2.1, 0), 1.0);
   if (bound > .2) return vec2(bound, 0.);
   float run = t < t0 ? 0. : 1.;
-  float animT = min(t, t1);
+  // tiny epsilon dodges a rare exact-value degenerate case in the shared
+  // sdMonster noise chain that can otherwise blank the whole frame
+  float animT = min(t, t1) + 0.0173;
   return sdMonster(lp, animT, seed, run);
 }
 
@@ -187,7 +189,7 @@ vec2 evalCrowd(int i, vec3 p, float t){
   if (i < 3){
     float bound = sdCapsule(lp, vec3(0, .2, 0), vec3(0, 2.1, 0), 1.0);
     if (bound > .2) return vec2(bound, 0.);
-    return sdMonster(lp, t, seed, 0.0);
+    return sdMonster(lp, t + 0.0173, seed, 0.0);
   }
   return cheapHuman(lp, seed);
 }
@@ -268,16 +270,17 @@ vec3 shade(vec3 p, vec3 n, vec3 rd, float m, float seed){
     vec3 mpos = gGunPos + gFwd * .62;
     vec3 L3 = normalize(mpos - p);
     float d3 = length(mpos - p);
-    lit += vec3(1., .82, .55) * mf * max(dot(n, L3), 0.) * 9. / (1. + d3 * d3 * .6);
-    if (isGun) lit += vec3(1., .8, .55) * mf * 1.2;
-    // omnidirectional falloff so anything close (esp. point-blank) is unmistakably
-    // lit even where the surface normal glances away from the muzzle
-    lit += vec3(1., .7, .5) * mf * 2.2 / (1. + d3 * d3 * 1.1);
+    lit += vec3(1., .82, .55) * mf * max(dot(n, L3), 0.) * 7. / (1. + d3 * d3 * .6);
+    if (isGun) lit += vec3(1., .8, .55) * mf * 1.0;
+    // small omnidirectional kicker so anything close (esp. point-blank) still
+    // catches light where the surface normal glances away from the muzzle
+    lit += vec3(1., .7, .5) * mf * .6 / (1. + d3 * d3 * 1.1);
   }
   float pb = uP[3];
   if (pb > .01){
-    // point-blank kill: the blast lights flesh/cloth/gore from everywhere at once
-    lit += vec3(1., .55, .4) * pb * 2.4;
+    // point-blank kill: the blast lights flesh/cloth/gore hard, but stays short
+    // of a flat wash so the monster's shape and the blood spray still read
+    lit += vec3(1., .55, .4) * pb * .8;
   }
 
   // AK / PPSh strobing muzzle flashes from off-screen left
@@ -297,10 +300,10 @@ vec3 shade(vec3 p, vec3 n, vec3 rd, float m, float seed){
     vec3 flarePos = mix(vec3(-1.1, 1.6, .2), vec3(.2, .25, 15.5), fp) + vec3(0., arc, 0.);
     vec3 L5 = normalize(flarePos - p);
     float d5 = length(flarePos - p);
-    float pls = .75 + .25 * sin(iTime * 5.0);
-    float falloff = 1. / (1. + d5 * d5 * 1.3);
-    lit += vec3(1., .10, .30) * (fp > .001 && fp < 1. ? 1.4 : fg * pls) * max(dot(n, L5), 0.) * 7. * falloff;
-    if (isGun) lit += vec3(1., .12, .32) * fg * rim * 1.0 * falloff;
+    // fg already carries the landing pulse envelope (see shot.js) — don't re-pulse it here
+    float falloff = 1. / (1. + d5 * d5 * .8);
+    lit += vec3(1., .10, .30) * (fp > .001 && fp < 1. ? 1.4 : fg) * max(dot(n, L5), 0.) * 11. * falloff;
+    if (isGun) lit += vec3(1., .12, .32) * fg * rim * 1.4 * falloff;
   }
 
   vec3 col = lit * ao;
@@ -339,7 +342,7 @@ vec3 volumetric(vec3 ro, vec3 rd, float tmax){
     if (fg > .001 || (fp > .001 && fp < 1.)){
       float d5 = length(flarePos - p);
       float k = fp > .001 && fp < 1. ? 1.0 : fg;
-      acc += vec3(1., .10, .28) * k * fog * .045 / (1. + d5 * d5 * .9);
+      acc += vec3(1., .10, .28) * k * fog * .07 / (1. + d5 * d5 * .7);
     }
   }
   return acc * (min(tmax,16.0) / steps);
@@ -353,7 +356,7 @@ vec3 render(vec2 fc){
   float bob = sin(t * 1.8) * .012;
   vec3 ro = vec3(.06, 1.56 + bob, -.35) + swayPos;
   float recoil = uP[0], pb = uP[3];
-  vec3 ta = ro + vec3(.02 * sin(t * .37), -.02 + recoil * .55 + pb * .25, 6.0);
+  vec3 ta = ro + vec3(.02 * sin(t * .37), -.02 + recoil * .18 + pb * .08, 6.0);
   float roll = .01 * sin(t * .8) + recoil * .02;
   vec3 rd = camRay(fc, ro, ta, 1.65, roll);
 
@@ -368,7 +371,10 @@ vec3 render(vec2 fc){
     vec3 p = ro + rd * d;
     h = map(p);
     if (h.x < .0009 || d > 24.) break;
-    d += h.x * .82;
+    // never step backward (can happen if a step starts deep inside geometry,
+    // e.g. a monster reaching very close to camera at a point-blank kill) —
+    // that stalls/reverses the march and can leave the whole frame unresolved.
+    d += max(h.x * .82, .015);
   }
   vec3 col;
   if (d > 24.){
