@@ -130,10 +130,10 @@ vec3 render(vec2 fc){
   vec3 rd = camRay(fc, ro, ta, 1.9, bobX*.02);
 
   float d = 0.; vec2 h; vec3 p;
-  for (int i = 0; i < 64; i++){
+  for (int i = 0; i < 48; i++){
     p = ro + rd*d; h = map(p);
-    if (h.x < .0025 || d > 70.) break;
-    d += h.x * 1.05;
+    if (h.x < .0032 || d > 70.) break;
+    d += h.x * 1.12;
   }
   bool hit = d <= 70.;
   vec3 col = vec3(0.);
@@ -180,7 +180,7 @@ vec3 render(vec2 fc){
   // fluorescent fixtures: most are dead. only a sparse deterministic subset ever lights up,
   // and it pools tightly (steep falloff) rather than flooding the whole corridor.
   if (!finalPhase){
-    for (int k = 0; k < 6; k++){
+    for (int k = 0; k < 4; k++){
       float fkz = float(k) * 3.0 - 1.5;
       float alive = step(0.62, hash11(float(k)*7.13 + 4.0));
       if (alive < .5) continue;
