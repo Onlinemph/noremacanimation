@@ -375,7 +375,9 @@ def _build_ir(kind):
     else:
         n = 1
         ir = np.array([1.0])
-    ir = ir / (np.max(np.abs(ir)) + 1e-9)
+    # normalise by energy, not peak: a long noise tail normalised to peak 1 carries 30-40 dB of
+    # gain through the convolution and wrecks the mix balance
+    ir = ir / (np.sqrt(np.sum(ir ** 2)) + 1e-9)
     return ir
 
 
@@ -1495,16 +1497,33 @@ def build_cues_track(shots, cues_by_shot):
     return master
 
 
-def limiter(master, target_db=-1.0):
-    peak = np.max(np.abs(master)) + 1e-12
-    # gentle soft-knee compression on the whole mix to tame the loudest
-    # transients without audibly squashing everything, then normalize to
-    # the exact target peak.
-    norm = master / peak
-    shaped = soft_clip(norm * 1.15, 1.6)
-    shaped_peak = np.max(np.abs(shaped)) + 1e-12
-    out = shaped * (DB(target_db) / shaped_peak)
-    return out
+# (start, end) seconds of total silence after the corridor face reveal and the lab tank burst
+SILENCE_CUTS = [(56.58, 57.9), (111.25, 112.9)]
+
+
+def rms_db(x):
+    return 20 * np.log10(np.sqrt(np.mean(x ** 2)) + 1e-12)
+
+
+def limiter(master, target_db=-1.0, attack_ms=1.5, release_ms=120.0):
+    """Look-ahead peak limiter: turns down only the samples that would exceed the ceiling,
+    with a fast attack and slow release, so quiet passages keep their level."""
+    ceil = DB(target_db)
+    level = np.max(np.abs(master), axis=1)
+    need = np.minimum(1.0, ceil / (level + 1e-12))           # instantaneous gain required
+    la = max(1, int(SR * attack_ms / 1000))
+    # look-ahead: gain must already be down when the peak arrives -> running min over the next `la` samples
+    from scipy.ndimage import minimum_filter1d
+    need = minimum_filter1d(need, size=2 * la + 1, mode="nearest")
+    # smooth: instant attack (take min), exponential release
+    rel = np.exp(-1.0 / (SR * release_ms / 1000))
+    g = np.empty_like(need)
+    cur = 1.0
+    for i in range(len(need)):                               # simple one-pole release
+        cur = need[i] if need[i] < cur else rel * cur + (1 - rel) * need[i]
+        g[i] = cur
+    out = master * g[:, None]
+    return np.clip(soft_clip(out / ceil, 1.2) * ceil, -ceil, ceil)
 
 
 def analyze(x, label):
@@ -1598,10 +1617,24 @@ def main():
     analyze(cues_track, "cues track")
 
     info("mixing...")
+    # bus gain staging: set each bus to a target loudness before summing, then only the
+    # transients that exceed the ceiling get limited
+    ambience = ambience * DB(-33.0 - rms_db(ambience))
+    score = score * DB(-30.0 - rms_db(score))
+    cues_track = cues_track * DB(-20.0 - rms_db(cues_track))
     master = ambience + score + cues_track
     master = remove_dc(master)
     master = limiter(master, target_db=-1.0)
     master = np.nan_to_num(master)
+    # hard cuts to silence where the picture cuts to black after a scare (everything, tails included)
+    for (a, b) in SILENCE_CUTS:
+        env = np.ones(N_TOTAL)
+        i0, i1 = n_samples(a), n_samples(b)
+        f0, f1 = n_samples(0.012), n_samples(0.35)
+        env[i0:i1] = 0.0
+        env[i0:i0 + f0] = np.linspace(1, 0, f0)[: len(env[i0:i0 + f0])]
+        env[i1 - f1:i1] = np.linspace(0, 1, f1)
+        master *= env[:, None]
 
     assert master.shape[0] == N_TOTAL, f"length mismatch: {master.shape[0]} != {N_TOTAL}"
 
