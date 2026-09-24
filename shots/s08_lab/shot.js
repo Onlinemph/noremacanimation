@@ -3,7 +3,6 @@ export default {
   duration: 13,
   fps: 24,
   sceneScale: 0.75,
-  params: t => [0,0,0,0,0,1],
 
   post(t) {
     const burstFlash = t >= 10.2 && t < 10.45 ? (1 - (t - 10.2) / 0.25) : 0;
@@ -11,8 +10,8 @@ export default {
       bar: 0.12,
       grain: 0.07,
       aberr: 0.0016,
-      vignette: 1.0,
-      bloom: 0.5,
+      vignette: 1.1,
+      bloom: 0.32,
       exposure: t >= 10.2 && t < 10.6 ? 1.5 : 1.0,
       temp: -0.25,
       contrast: 1.08,

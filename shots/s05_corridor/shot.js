@@ -13,7 +13,7 @@ const STAGES = [
   { blackout: [2.9, 3.35], revealAt: 3.35, dist: 15 },
   { blackout: [7.05, 7.5], revealAt: 7.5, dist: 8 },
   { blackout: [9.55, 9.95], revealAt: 9.95, dist: 4 },
-  { blackout: [11.75, 12.2], revealAt: 12.2, dist: 0.55 }, // final: right in the face
+  { blackout: [11.75, 12.2], revealAt: 12.2, dist: 1.15 }, // final: right in the face
 ];
 
 function camZ(t) {
@@ -88,12 +88,12 @@ export default {
       grain: 0.075,
       vignette: 1.05,
       shake,
-      exposure: final ? 1.4 : 0.95,
-      contrast: final ? 1.25 : 1.1,
-      sat: 0.88,
+      exposure: final ? 0.92 : 0.95,
+      contrast: final ? 1.3 : 1.1,
+      sat: final ? 0.72 : 0.88,
       temp: -0.3,
-      bloom: final ? 0.55 : 0.3,
-      flash: final ? 0.5 * smooth(12.15, 12.22, t) * (1 - smooth(12.3, 12.45, t)) : 0,
+      bloom: final ? 0.32 : 0.3,
+      flash: final ? 0.22 * smooth(12.15, 12.2, t) * (1 - smooth(12.28, 12.4, t)) : 0,
       flashColor: [1, 0.95, 0.9],
       fade,
     };

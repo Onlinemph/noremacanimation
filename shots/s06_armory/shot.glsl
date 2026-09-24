@@ -133,7 +133,6 @@ vec3 wallAlbedo(vec3 p){
   vec2 uv = vec2(1.0 - (p.x - ROOM_L) / (ROOM_R - ROOM_L), p.y / ROOM_CEIL);
   vec4 tex = texture(iTex0, uv);
   base = mix(base, tex.rgb, tex.a);
-  if (uP[1] > 0.5) return vec3(uv, tex.a); // DEBUG uv/alpha visualize
   return base;
 }
 vec3 floorAlbedo(vec3 p){
@@ -214,12 +213,15 @@ vec3 render(vec2 fc){
   float t = iTime;
   if (t < 6.0){
     float k = clamp(t/6.0, 0., 1.);
-    float ang = mix(-0.10, 0.32, k);
-    float rad = mix(1.45, 0.80, smoothstep(0.,1.,k));
-    float hgt = mix(TABLE_TOP + 0.80, TABLE_TOP + 0.40, k);
-    ro = TABLE_C + vec3(sin(ang)*rad, hgt, -cos(ang)*rad);
-    ta = vec3(TABLE_C.x, TABLE_TOP + 0.02, TABLE_C.z);
-    focal = mix(1.0, 2.3, k);
+    float ke = smoothstep(0., 1., k);
+    vec3 ro0 = vec3(-0.30, 1.18, -1.75), ta0 = vec3(0.10, 0.95, 1.05);
+    float ang1 = mix(0.05, 0.40, k);
+    float rad1 = 0.78;
+    vec3 ro1 = TABLE_C + vec3(sin(ang1)*rad1, TABLE_TOP + 0.36, -cos(ang1)*rad1);
+    vec3 ta1 = vec3(TABLE_C.x, TABLE_TOP + 0.02, TABLE_C.z);
+    ro = mix(ro0, ro1, ke);
+    ta = mix(ta0, ta1, ke);
+    focal = mix(0.95, 2.35, ke);
   } else {
     ro = vec3(0.10, 1.30, -1.25);
     ta = vec3(0.05, 0.95, 0.85);

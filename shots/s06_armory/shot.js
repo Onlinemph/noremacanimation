@@ -34,12 +34,15 @@ function backWallTexture(ctx, w, h) {
 
   // stencilled ОРУЖЕЙНАЯ across the middle, painted rough
   ctx.save();
-  ctx.font = `${Math.round(h * 0.12)}px "Russo One"`;
+  const label = 'ОРУЖЕЙНАЯ';
+  let fsz = h * 0.12;
+  ctx.font = `${Math.round(fsz)}px "Russo One"`;
+  const avail = w * 0.98 - w * 0.36;
+  let mw = ctx.measureText(label).width;
+  if (mw > avail) { fsz *= avail / mw; ctx.font = `${Math.round(fsz)}px "Russo One"`; }
   ctx.textBaseline = 'middle';
   ctx.textAlign = 'left';
-  const label = 'ОРУЖЕЙНАЯ';
   let lx = w * 0.36, ly = h * 0.40;
-  ctx.letterSpacing = `${Math.round(w * 0.012)}px`;
   for (let pass = 0; pass < 3; pass++) {
     ctx.globalAlpha = pass === 0 ? 0.82 : 0.10;
     ctx.fillStyle = '#d9d2c0';
@@ -195,16 +198,25 @@ function drawAxe(ctx, cx, cy, s, ink) {
   ctx.save();
   ctx.fillStyle = ink;
   ctx.strokeStyle = ink;
-  ctx.lineWidth = 3 * s;
+  ctx.lineCap = 'round';
+  // handle, angled
+  ctx.lineWidth = 4 * s;
   ctx.beginPath();
-  ctx.moveTo(cx, cy - 30 * s);
-  ctx.lineTo(cx, cy + 30 * s);
+  ctx.moveTo(cx - 8 * s, cy + 46 * s);
+  ctx.lineTo(cx + 10 * s, cy - 34 * s);
   ctx.stroke();
+  // axe head: curved bit on one side, small poll on the other
   ctx.beginPath();
-  ctx.moveTo(cx, cy - 28 * s);
-  ctx.lineTo(cx + 20 * s, cy - 22 * s);
-  ctx.lineTo(cx + 20 * s, cy - 8 * s);
-  ctx.lineTo(cx, cy - 12 * s);
+  ctx.moveTo(cx + 10 * s, cy - 34 * s);
+  ctx.quadraticCurveTo(cx + 40 * s, cy - 40 * s, cx + 46 * s, cy - 18 * s);
+  ctx.quadraticCurveTo(cx + 28 * s, cy - 12 * s, cx + 6 * s, cy - 18 * s);
+  ctx.closePath();
+  ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(cx + 10 * s, cy - 34 * s);
+  ctx.lineTo(cx - 8 * s, cy - 30 * s);
+  ctx.lineTo(cx - 6 * s, cy - 18 * s);
+  ctx.lineTo(cx + 6 * s, cy - 18 * s);
   ctx.closePath();
   ctx.fill();
   ctx.restore();
@@ -322,10 +334,10 @@ export default {
     // dim the 3D scene during the card sequence; snap-flash on each transition
     const local = t - 6, idx = Math.min(4, Math.floor(local / 2.4)), ct = local - idx * 2.4;
     const flash = ct < 0.06 ? 1 - ct / 0.06 : 0;
-    return { ...base, exposure: 0.5, flash: flash * 0.8, flashColor: [1, 0.95, 0.85] };
+    return { ...base, exposure: 1.15, flash: flash * 0.8, flashColor: [1, 0.95, 0.85] };
   },
   params(t) {
-    return [pumpEnvelope(t), 1];
+    return [pumpEnvelope(t)];
   },
   textures: [
     { w: 1160, h: 1000, draw: backWallTexture },
@@ -336,11 +348,11 @@ export default {
     const s = W / 1280;
     // blur + dim the composited 3D frame in place, so the scene reads behind the card
     try {
-      ctx.filter = 'blur(' + Math.round(14 * s) + 'px) brightness(0.4) saturate(0.65)';
+      ctx.filter = 'blur(' + Math.round(14 * s) + 'px) brightness(0.8) saturate(0.7)';
       ctx.drawImage(ctx.canvas, 0, 0);
       ctx.filter = 'none';
     } catch (e) { /* canvas filter unsupported: fall back to a flat dim */ }
-    ctx.fillStyle = 'rgba(6,7,9,0.42)';
+    ctx.fillStyle = 'rgba(6,7,9,0.50)';
     ctx.fillRect(0, 0, W, H);
 
     const local = t - 6, idx = Math.min(4, Math.floor(local / 2.4)), ct = local - idx * 2.4;

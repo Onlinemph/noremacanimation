@@ -9,12 +9,14 @@ const FLARE_LAUNCH = 18.3, FLARE_LAND = 19.6;
 const TURN_T = 22.6;
 const FADE_START = 22.8, FADE_END = 23.6;
 
+// Ramps up to 1 *before* t0 so the scripted event frame itself (t0) is already
+// at full strength (muzzle flashes/recoil must read on the exact cue frame).
 function pulse(t, t0, attack, hold, decay) {
-  if (t < t0) return 0;
+  if (t < t0 - attack) return 0;
+  if (t < t0) return (t - (t0 - attack)) / attack;
   const dt = t - t0;
-  if (dt < attack) return dt / attack;
-  if (dt < attack + hold) return 1;
-  const d = dt - attack - hold;
+  if (dt < hold) return 1;
+  const d = dt - hold;
   if (d < decay) return 1 - d / decay;
   return 0;
 }
@@ -68,9 +70,9 @@ export default {
     let fade = 0;
     if (t > FADE_START) fade = Math.min(1, (t - FADE_START) / (FADE_END - FADE_START));
     return {
-      grain: .07 + pointBlankEnv * .03,
+      grain: .06 + pointBlankEnv * .03,
       aberr: .0016 + recoilEnv * .001,
-      vignette: 1.0,
+      vignette: .78,
       shake,
       exposure: .95 + muzzleFlashEnv * .3 + revealEnv * .15,
       flash: flashSum,

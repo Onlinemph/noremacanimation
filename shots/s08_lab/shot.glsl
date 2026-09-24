@@ -218,7 +218,7 @@ vec3 benchAlb(vec3 p){
   return base;
 }
 
-vec3 shade(vec2 h, vec3 p, vec3 n, vec3 rd, vec3 ro){
+vec3 shade(vec2 h, vec3 p, vec3 n, vec3 rd, vec3 ro, vec3 fd){
   float m = h.y;
   vec3 albedo = vec3(.4);
   float rough = 0.6; bool emissive = false; vec3 emitCol = vec3(0.);
@@ -256,34 +256,36 @@ vec3 shade(vec2 h, vec3 p, vec3 n, vec3 rd, vec3 ro){
 
   if (emissive) return emitCol;
 
-  // key light: sickly green tank glow (multiple point-ish sources along the row)
   vec3 col = vec3(0.0);
-  for (int i = 0; i < NTANK; i++){
-    float tz = tankZ(i);
-    vec3 lp = vec3(TANK_X - 0.1, 1.2, tz);
-    vec3 L = lp - p; float ld = length(L); L /= ld;
-    float ndl = max(dot(n, L), 0.0);
-    float atten = 1.0 / (1.0 + ld*ld*2.6);
-    col += albedo * ndl * atten * vec3(.20, .85, .30) * 0.55;
-  }
 
-  // flashlight
-  vec3 fp = flashPos(ro), fd = flashDir(iTime);
-  float cone = spotLight(p, fp, fd, 0.86, 0.94);
+  // flashlight — the dominant light source, s06-style: angular cone x inverse-square atten
+  vec3 fp = flashPos(ro);
+  float cone = spotLight(p, fp, fd, 0.80, 0.95);
   float cookie = flashCookie(p, fp, fd);
   vec3 Lf = normalize(fp - p);
   float ldf = length(fp - p);
   float ndlf = max(dot(n, Lf), 0.0);
+  float atten = 1.0 / (1.0 + ldf*ldf*0.55);
   float shf = shadow(p + n*0.006, Lf, ldf);
-  float fatten = 1.0 / (1.0 + ldf*ldf*0.12);
-  col += albedo * ndlf * cone * cookie * shf * fatten * vec3(1.0, .97, .85) * 2.2;
-
-  // dim cold ambient
-  col += albedo * vec3(.015, .022, .026);
+  col += albedo * ndlf * cone * cookie * atten * shf * vec3(1.0, .97, .85) * 3.4;
 
   vec3 h2 = normalize(Lf - rd);
-  float spec = pow(max(dot(n, h2), 0.0), mix(70.0,14.0,rough)) * (1.0-rough) * cone * fatten;
-  col += spec * vec3(1.0,.95,.85) * shf * 0.6;
+  float spec = pow(max(dot(n, h2), 0.0), mix(70.0,14.0,rough)) * (1.0-rough) * cone * atten;
+  col += spec * vec3(1.0,.95,.85) * shf * 0.5;
+
+  // sickly green glow from the nearest tank only (localized, not room-filling)
+  float bestLd = 1e5; vec3 bestDir = vec3(0.);
+  for (int i = 0; i < NTANK; i++){
+    vec3 lp = vec3(TANK_X - 0.1, 1.2, tankZ(i));
+    float ld = length(lp - p);
+    if (ld < bestLd){ bestLd = ld; bestDir = (lp - p) / max(ld,1e-4); }
+  }
+  float ndlg = max(dot(n, bestDir), 0.0);
+  float gatten = 1.0 / (1.0 + bestLd*bestLd*1.4);
+  col += albedo * ndlg * gatten * vec3(.18, .95, .32) * 1.1;
+
+  // dim cold ambient fill so shadows aren't pure black
+  col += albedo * vec3(.012, .018, .02);
 
   return col;
 }
@@ -293,18 +295,6 @@ vec3 render(vec2 fc){
   float cz = camZ_(t), push = camPush_(t);
 
   vec3 ro, ta; float focal;
-  if (uP[5] > 0.5){
-    // DEBUG: fixed camera facing tank 0 head-on for geometry check
-    ro = vec3(-0.5, 1.3, tankZ(0) - 2.0);
-    ta = vec3(TANK_X, 1.2, tankZ(0));
-    focal = 1.7;
-    vec3 rdd = camRay(fc, ro, ta, focal, 0.0);
-    float dd = 0.0; vec2 hh;
-    for (int i = 0; i < 140; i++){ vec3 pp = ro+rdd*dd; hh = map(pp); if (hh.x < 0.0015*max(dd,1.0)) break; dd += hh.x*0.8; if (dd>16.0) break; }
-    if (dd > 16.0) return vec3(0.01,0.01,0.02);
-    vec3 pp = ro+rdd*dd, nn = nrm(pp);
-    return shade(hh, pp, nn, rdd, ro) + vec3(0.001);
-  }
   if (t < 6.0){
     ro = vec3(-0.55, 1.55, cz);
     ta = vec3(TANK_X - 0.4, 1.25, cz + 2.0);
@@ -316,6 +306,11 @@ vec3 render(vec2 fc){
     ta = mix(vec3(TANK_X - 0.4, 1.25, cz + 2.0), lastC + vec3(0.2,0.05,0.), push);
     focal = mix(1.9, 2.1, push);
   }
+
+  vec3 camF = normalize(ta - ro);
+  vec3 camR = normalize(cross(camF, vec3(0.,1.,0.)));
+  vec3 camU = cross(camR, camF);
+  vec3 fd = flashDir(camF, camR, camU, t);
 
   vec3 rd = camRay(fc, ro, ta, focal, 0.0);
 
@@ -335,14 +330,12 @@ vec3 render(vec2 fc){
   } else {
     vec3 p = ro + rd * d;
     vec3 n = nrm(p);
-    col = shade(h, p, n, rd, ro);
+    col = shade(h, p, n, rd, ro, fd);
 
     // crack overlay on the last tank's glass, near burst
     if (h.y == MI_GLASS && t >= LAST_T0 && t < BURST_T){
       vec3 c = vec3(TANK_X, 0.0, tankZ(NTANK-1));
       vec3 lp = p - c;
-      if (lp.z > tankZ(NTANK-1) - tankZ(NTANK-2) * 0. - 100.0 && length(lp.xz) < 0.5){ // always true; guard removed below
-      }
       float ang = atan(lp.z, lp.x);
       vec2 uv = vec2(ang * 0.42, lp.y);
       vec2 origin = vec2(PI * 0.42, handLocal().y);
@@ -368,7 +361,7 @@ vec3 render(vec2 fc){
   }
 
   // cheap volumetric shaft from the flashlight
-  vec3 fp = flashPos(ro), fd = flashDir(t);
+  vec3 fp = flashPos(ro);
   float dither = fract(sin(dot(fc, vec2(12.9898,78.233)))*43758.5453);
   vec3 vol = vec3(0.);
   const int VS = 8;

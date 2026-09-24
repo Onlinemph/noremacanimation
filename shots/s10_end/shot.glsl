@@ -8,7 +8,7 @@ const float FOCAL = 1.55;
 vec3 gCamRo, gCamFwd, gCamRight, gCamUp;
 void setupCam(){
   gCamRo = vec3(0.0, 1.7, 0.0);
-  vec3 ta = vec3(0.0, 2.55, 5.0);
+  vec3 ta = vec3(0.0, 2.0, 5.0);
   gCamFwd = normalize(ta - gCamRo);
   gCamRight = normalize(cross(gCamFwd, vec3(0.0, 1.0, 0.0)));
   gCamUp = cross(gCamRight, gCamFwd);
@@ -76,7 +76,7 @@ float vehSil(vec2 lp){
 // ============================================================ exterior scene ===
 vec3 exteriorScene(vec2 fc, vec2 uv, float t){
   setupCam();
-  vec3 rd = camRay(fc, gCamRo, vec3(0.0, 2.55, 5.0), FOCAL, 0.0);
+  vec3 rd = camRay(fc, gCamRo, vec3(0.0, 2.0, 5.0), FOCAL, 0.0);
 
   float flick = fireFlicker(t);
   vec3 fireWorld = vec3(2.6, 0.0, 42.0);
@@ -115,15 +115,18 @@ vec3 exteriorScene(vec2 fc, vec2 uv, float t){
   col += embers(uv, fp.xy + vec2(0.0, 0.02), t) * fireScale;
 
   // ---- Kharkovchanka, receding across the plateau ----
-  float vz = mix(9.0, 55.0, smoothstep(0.0, 7.0, t));
-  vec3 vehWorld = vec3(-0.9, 0.0, vz);
+  float vz = mix(12.0, 52.0, smoothstep(0.0, 7.0, t));
+  vec3 vehWorld = vec3(-2.2, 0.0, vz);
   vec3 vp = projectPoint(vehWorld);
   float vScale = 1.0 / max(vp.z, 1.0) * FOCAL;
   vec2 lv = (uv - vp.xy) / vScale;
   float vd = vehSil(lv);
   float vMask = smoothstep(0.015, -0.008, vd);
-  vec3 vehCol = vec3(0.004, 0.0045, 0.006);
+  vec3 vehCol = vec3(0.0);
   col = mix(col, vehCol, vMask);
+  // faint cool rim from the aurora/starlight catching the top edge, so the silhouette reads
+  float rim = smoothstep(0.05, 0.0, abs(vd)) * (1.0 - vMask);
+  col += vec3(0.10, 0.20, 0.20) * rim * 0.22;
 
   // tail lights at the rear-lower corners, + a faint warm exhaust glow underneath
   vec2 tl0 = vec2(-1.5, 0.34), tl1 = vec2(1.4, 0.34);

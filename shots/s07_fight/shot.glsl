@@ -191,9 +191,11 @@ vec3 shade(vec3 p, vec3 n, vec3 rd, float m, float seed){
   else if (m <= 6.5) { alb = gunAlbedo(m, p); spec = .55; }
   else if (m == M_CONCRETE){ alb = mix(vec3(.14,.14,.15), vec3(.03,.03,.035), smoothstep(.4,.8,fbm3lo(p*1.5))); spec=.05; }
   else { // M_STEEL walls/floor/ceiling: grime, frost, old paint, blood
-    float grime = fbm3lo(p * 2.2);
+    // fade high-frequency detail with distance to avoid aliasing/static on far surfaces
+    float distFade = clamp(1.0 - length(p - (gGunPos)) * .045, .35, 1.0);
+    float grime = fbm3lo(p * (0.9 * distFade + .15));
     vec3 paint = mix(vec3(.10, .13, .11), vec3(.03, .035, .04), smoothstep(.3, .75, grime));
-    float frost = smoothstep(.55, .8, fbm3lo(p * 3.0 + vec3(0,0,9.)));
+    float frost = smoothstep(.55, .8, fbm3lo(p * (1.1 * distFade + .2) + vec3(0,0,9.)));
     paint = mix(paint, vec3(.55, .62, .68) * .5, frost * step(p.y, .05));
     float bl = 0.;
     if (p.y < .06) bl = max(bl, bloodSplat(p.xz * .5 + 11., 4.1));
@@ -215,8 +217,8 @@ vec3 shade(vec3 p, vec3 n, vec3 rd, float m, float seed){
   // flashlight mounted under the gun, aimed with camera
   vec3 fdir = gFwd;
   vec3 L2 = normalize(gGunPos - p);
-  float fl = spotLight(p, gGunPos, fdir, .90, .985) * flashCookie(p, gGunPos, fdir);
-  col += vec3(.85, .92, 1.0) * fl * max(dot(n, L2), 0.) * 5.0;
+  float fl = spotLight(p, gGunPos, fdir, .80, .975) * flashCookie(p, gGunPos, fdir);
+  col += vec3(.85, .92, 1.0) * fl * max(dot(n, L2), 0.) * 6.5;
 
   // muzzle flash
   float mf = uP[2];
@@ -249,7 +251,9 @@ vec3 shade(vec3 p, vec3 n, vec3 rd, float m, float seed){
 
   col *= ao;
   // faint ambient so nothing is pure black
-  col += alb * .008;
+  col += alb * .03;
+  // gun always gets a small guaranteed fill so its silhouette/detail reads
+  if (m > 4.5 && m < 6.5) col += alb * .22 * (0.3 + 0.7 * max(dot(n, -rd), 0.));
   // specular from strongest nearby source (beacon/flashlight combined dir approx)
   vec3 Ls = normalize(L2 + L1 * .3);
   float sp = pow(max(dot(reflect(-Ls, n), -rd), 0.), 28.) * spec;

@@ -25,15 +25,15 @@ float terrainH(vec2 p){
 
 // Bounded linear march + binary refine for the height field (true SDF marching
 // is unstable for heightfields at grazing angles, so we do this explicitly).
-const float TERR_RANGE = 34.0;
-const float TERR_STEP = 0.55;
+const float TERR_RANGE = 26.0;
+const float TERR_STEP = 0.65;
 bool terrainHit(vec3 ro, vec3 rd, out float dist){
   // camera keeps ~0.55m clearance over local terrain; terrain height is bounded, so a ray
   // pointing clearly upward can never cross it within TERR_RANGE — skip the march entirely.
   if (rd.y > 0.02) { dist = TERR_RANGE; return false; }
   float prevY = ro.y - terrainH(ro.xz);
   float prevD = 0.0;
-  for (int i = 1; i <= 64; i++){
+  for (int i = 1; i <= 40; i++){
     float dd = float(i) * TERR_STEP;
     vec3 p = ro + rd * dd;
     float y = p.y - terrainH(p.xz);
@@ -53,28 +53,21 @@ bool terrainHit(vec3 ro, vec3 rd, out float dist){
 
 // ---------------------------------------------------------------- vehicle ---
 // Local frame: nose at +z, up +y, origin at ground contact. Roughly 4.6m long.
+// Trimmed to the primitives that actually read at speed/distance: hull+cab merged into one
+// pass (mirrored track on both sides via abs(x)), no separate windshield/exhaust — keeps the
+// per-step primitive count down since this is evaluated at full detail for every near pixel.
 vec2 sdSnoCat(vec3 p){
   vec2 r = vec2(1e5, V_BODY);
   float hull = sdRoundBox(p - vec3(0., .78, .0), vec3(1.05, .5, 2.05), .18);
-  r = opU(r, vec2(hull, V_BODY));
   vec3 cq = p - vec3(0., 1.62, .35);
-  float cab = sdRoundBox(cq, vec3(.92, .48, 1.15), .12);
-  float windshield = sdBox(rotX(cq - vec3(0., .18, .95), .5), vec3(.8, .55, .06));
-  r = opU(r, vec2(cab, V_BODY));
-  r = opU(r, vec2(max(windshield, cab - .02), V_GLASS));
+  float cab = sdRoundBox(cq, vec3(.9, .46, 1.1), .12);
+  r = opU(r, vec2(smin(hull, cab, .12), V_BODY));
   r = opU(r, vec2(sdRoundBox(p - vec3(0., .95, 1.75), vec3(.85, .28, .35), .1), V_BODY));
-  for (int s = 0; s < 2; s++){
-    float sg = s == 0 ? -1. : 1.;
-    vec3 tp = p - vec3(1.18 * sg, .42, .0);
-    float track = sdRoundBox(tp, vec3(.26, .42, 2.15), .2);
-    r = opU(r, vec2(track, V_TRACK));
-  }
+  vec3 tp = vec3(abs(p.x) - 1.18, p.y - .42, p.z);
+  r = opU(r, vec2(sdRoundBox(tp, vec3(.26, .42, 2.15), .2), V_TRACK));
   r = opU(r, vec2(sdRoundBox(p - vec3(0., 2.02, .55), vec3(.55, .06, .08), .03), V_CHROME));
-  for (int s = 0; s < 2; s++){
-    float sg = s == 0 ? -1. : 1.;
-    r = opU(r, vec2(sdSphere(p - vec3(.62 * sg, .92, 2.02), .1), V_LAMP));
-  }
-  r = opU(r, vec2(sdCylY(p - vec3(-.75, 1.6, -1.1), .045, .35), V_CHROME));
+  vec3 lp = vec3(abs(p.x) - .62, p.y - .92, p.z - 2.02);
+  r = opU(r, vec2(sdSphere(lp, .1), V_LAMP));
   return r;
 }
 
@@ -97,10 +90,10 @@ vec2 mapVehicle(vec3 p, vec3 vp){
 }
 bool vehicleHit(vec3 ro, vec3 rd, vec3 vp, out float dist, out float mat){
   float d = 0.3;
-  for (int i = 0; i < 90; i++){
+  for (int i = 0; i < 64; i++){
     vec3 p = ro + rd * d;
     vec2 h = mapVehicle(p, vp);
-    if (h.x < .0015) { dist = d; mat = h.y; return true; }
+    if (h.x < .003) { dist = d; mat = h.y; return true; }
     d += h.x;
     if (d > 140.0) break;
   }

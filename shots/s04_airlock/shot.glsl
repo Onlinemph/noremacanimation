@@ -101,12 +101,12 @@ vec3 nrm(vec3 p){ vec2 e=vec2(.0015,0.); return normalize(vec3(
   map(p+e.xyy).x-map(p-e.xyy).x, map(p+e.yxy).x-map(p-e.yxy).x, map(p+e.yyx).x-map(p-e.yyx).x)); }
 
 float shadow(vec3 ro, vec3 rd, float maxd){
-  float res = 1., t = .05;
-  for (int i = 0; i < 28; i++){
+  float res = 1., t = .06;
+  for (int i = 0; i < 9; i++){
     float h = map(ro + rd*t).x;
-    res = min(res, 10.*h/t);
-    t += clamp(h, .03, .5);
-    if (h < .001 || t > maxd) break;
+    res = min(res, 8.*h/t);
+    t += clamp(h, .07, .6);
+    if (h < .002 || t > maxd) break;
   }
   return clamp(res, 0., 1.);
 }
@@ -161,10 +161,10 @@ vec3 render(vec2 fc){
   vec3 rd = camRay(fc, ro, ta, 1.65, sway*.01);
 
   float d = 0.; vec2 h; vec3 p;
-  for (int i = 0; i < 130; i++){
+  for (int i = 0; i < 95; i++){
     p = ro + rd*d; h = map(p);
-    if (h.x < .0009 || d > 45.) break;
-    d += h.x * .82;
+    if (h.x < .0012 || d > 45.) break;
+    d += h.x * .9;
   }
 
   float power = uP[2], beacon = uP[3];
@@ -203,9 +203,8 @@ vec3 render(vec2 fc){
     vec3 bDir = vec3(sin(bAng), -.1, cos(bAng));
     vec3 bPos = vec3(0., ROOMH-.2, .5);
     float bcone = spotLight(p, bPos, bDir, .55, .9) * beacon;
-    float bsh = bcone > .003 ? shadow(p, normalize(bPos-p), length(bPos-p)) : 1.;
     float pulse = .55 + .45*sin(iTime*9.0);
-    col += alb * max(dot(n, normalize(bPos-p)),0.) * bcone * bsh * pulse * vec3(2.0,.07,.04) * 1.1;
+    col += alb * max(dot(n, normalize(bPos-p)),0.) * bcone * pulse * vec3(2.0,.07,.04) * 1.1;
     col += alb * beacon * vec3(.035,0.,0.);                // faint red fill
 
     // cold blue spill from outside if door open
@@ -219,7 +218,7 @@ vec3 render(vec2 fc){
   // --- cheap volumetric fog / light shafts along the primary ray ---
   vec3 fog = vec3(0.);
   float marchMax = min(d, 9.0);
-  int STEPS = 18;
+  int STEPS = 8;
   float stepLen = marchMax / float(STEPS);
   float dith = hash21(fc + iTime*90.);
   for (int i = 0; i < STEPS; i++){

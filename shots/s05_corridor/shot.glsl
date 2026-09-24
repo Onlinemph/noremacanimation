@@ -147,19 +147,19 @@ vec3 render(vec2 fc){
   for (int k = 0; k < 6; k++){
     float fkz = float(k) * 3.0 - 1.5;
     vec3 lp = vec3(0., ROOMH-.1, fkz);
-    vec3 L = lp - p; float dist = length(L);
+    vec3 L = lp - p; float dist = max(length(L), .8);
     if (dist > 11.0) continue;
     float atten = lightI / (1. + dist*dist*.55);
     float ndotl = max(dot(n, L/dist), 0.);
-    col += alb * ndotl * atten * vec3(.85,.92,1.0) * 5.5;
+    col += alb * ndotl * atten * vec3(.85,.92,1.0) * 3.2;
   }
 
   // harsh under/front light for the final face-reveal
   if (closeUp > .001){
-    vec3 lp = ro + vec3(0., -.3, .6);
-    vec3 L = lp - p; float dist = max(length(L), .05);
-    float atten = closeUp / (1. + dist*dist*.8);
-    col += alb * max(dot(n, L/dist),0.) * atten * vec3(1.2,1.0,.85) * 9.0;
+    vec3 lp = ro + vec3(.15, -.25, .45);
+    vec3 L = lp - p; float dist = max(length(L), .3);
+    float atten = closeUp / (1. + dist*dist*1.6);
+    col += alb * max(dot(n, L/dist),0.) * atten * vec3(1.15,1.0,.85) * 2.6;
   }
 
   // monster gets a rim of whatever ambient light is present so it reads as a silhouette
