@@ -2,7 +2,7 @@
 export default {
   duration: 13,
   fps: 24,
-  sceneScale: 0.64,
+  sceneScale: 0.7,
 
   // uP[0] = 1 after the hard cut: skip the scene entirely
   params(t) { return [t >= 11.2 ? 1 : 0]; },
@@ -17,12 +17,12 @@ export default {
       aberr: burst ? 0.004 : 0.0017,
       vignette: 1.15,
       bloom: burst ? 0.5 : 0.4,
-      exposure: 1.0,
+      exposure: 1.0 + (burst ? 0.35 * Math.exp(-b * 7) : 0),   // multiplicative pop: blacks stay black
       temp: -0.15,
       contrast: 1.1,
       sat: 0.95,
       shake: burst ? 2.2 * Math.exp(-b * 2.5) + 0.4 : (t > 8.9 && t < B ? 0.25 : 0.12),
-      flash: burst ? 0.35 * Math.exp(-b * 14) : 0,
+      flash: 0,
       flashColor: [0.55, 1.0, 0.6],
       fade: t >= 11.2 ? 1 : 0,
       lift: [0, 0.01, 0.005],

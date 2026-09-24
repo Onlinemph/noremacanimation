@@ -32,7 +32,7 @@ float tankI(int i){
   float base = i == 3 ? 1.15 : (i == 1 ? .8 : 1.);
   if (i == 2) base *= .75 + .25 * step(.12, noise2(vec2(t * 9., 3.)));   // failing ballast
   if (i == 3) base *= 1. + .35 * smoothstep(8.5, 10.1, t) * (.6 + .4 * sin(t * 31.));
-  if (i == 3 && t > T_BURST) base = 1.1 + 2.5 * exp(-(t - T_BURST) * 5.);
+  if (i == 3 && t > T_BURST) base = 1.1 + 1.2 * exp(-(t - T_BURST) * 6.);
   return base * fl;
 }
 
@@ -45,7 +45,7 @@ vec3 lungePos(){
   vec3 dir = normalize(cam - c); dir.y = 0.; dir = normalize(dir);
   vec3 target = cam - dir * .8;
   target.y = cam.y - 1.3;
-  float e = 1. - pow(1. - b, 1.8);
+  float e = pow(b, 1.5);
   vec3 p = mix(c, target, e);
   p.y += sin(b * PI) * .25;
   return p;
@@ -62,7 +62,7 @@ void setupCamera(){
   vec3 ta1 = tankC(3) + vec3(0., 1.5, 0.);
   gRo = mix(ro0, ro1, k);
   gTa = mix(ta0, ta1, k);
-  gFocal = mix(1.15, 1.7, k);
+  gFocal = mix(1.15, 1.7, k) - .45 * smoothstep(T_BURST, T_BURST + .3, t);
   // burst: operator staggers back
   if (t > T_BURST){
     float b = t - T_BURST;
@@ -84,7 +84,7 @@ void setupCamera(){
   tgt = mix(tgt, c, smoothstep(5.2, 6.8, t));
   tgt = mix(tgt, d, smoothstep(7.0, 8.4, t));
   tgt += (vec3(noise2(vec2(t * 1.3, 3.)), noise2(vec2(t * 1.1, 5.)), noise2(vec2(t * 1.2, 8.))) - .5) * .25;
-  if (t > T_BURST) tgt = mix(tgt, gRo + vec3(1.5, -1.6, -1.8), smoothstep(T_BURST, T_BURST + .25, t)); // flinch
+  if (t > T_BURST) tgt = mix(tgt, gRo + vec3(1.5, -1.6, -1.8), smoothstep(T_BURST, T_BURST + .1, t)); // flinch
   gFlDir = normalize(tgt - gFlPos);
 }
 
@@ -344,9 +344,10 @@ vec3 lightAll(vec3 p, vec3 n, vec3 rd, vec3 alb, float spk, float gloss){
     vec3 c = tankC(i);
     vec3 pc = vec3(c.x, clamp(p.y, .75, 2.05), c.z);
     if (i == 3 && iTime > T_BURST) pc.y = .65;
+    float kb = (i == 3 && iTime > T_BURST) ? .45 : 1.;
     vec3 L = pc - p; float d = length(L); L /= d;
     float dd = max(d - TR * .5, 0.);
-    float at = tankI(i) * 1.1 / (1. + 5. * dd * dd);
+    float at = kb * tankI(i) * 1.1 / (1. + 5. * dd * dd);
     // caps block light that would leave the tank steeply up/down
     at *= smoothstep(-.1, .35, 1. - abs(L.y));
     float ndl = max(dot(n, L), 0.);
@@ -774,8 +775,9 @@ vec3 render(vec2 fc){
     // the creature out of the tank: silhouette against the green, wet rim light
     vec3 p = ro + rd * tm;
     vec3 alb = monsterAlbedo(fmat, p) * .6;
-    vec3 Lb = normalize(tankC(3) + vec3(0., .6, 0.) - p);
-    float lb = tankI(3) * 1.4 / (1. + dot(tankC(3) - p, tankC(3) - p) * .8);
+    vec3 lc = tankC(3) + vec3(0., .9, 0.) - normalize(camEnd() - tankC(3)) * .9;   // glow source behind the creature
+    vec3 Lb = normalize(lc - p);
+    float lb = tankI(3) * 1.4 / (1. + dot(lc - p, lc - p) * .8);
     float rim = pow(1. - max(dot(fn, -rd), 0.), 2.5) * max(dot(fn, Lb) + .3, 0.);
     col = GREEN * lb * (alb * max(dot(fn, Lb), 0.) * .5 + rim * .8 + pow(max(dot(reflect(rd, fn), Lb), 0.), 20.) * monsterSpec(fmat) * 1.5);
     vec3 Lf = normalize(gFlPos - p);
@@ -806,7 +808,7 @@ vec3 render(vec2 fc){
     // atomised liquid hanging behind the creature: the backdrop its silhouette reads against
     float bm = iTime - T_BURST;
     vec3 mc = tankC(3) + vec3(0., 1.1, 0.) + normalize(camEnd() - tankC(3)) * (.3 + .8 * bm);
-    fog += GREEN * 3.5 * exp(-bm * .8) * scatterPoint(ro, rd, mc, tmax, 1.5);
+    fog += GREEN * 2. * exp(-bm * 1.2) * scatterPoint(ro, rd, mc, tmax, 4.);
   }
   col += fog * .009 * (.7 + .6 * noise3(ro + rd * 2. + vec3(0., 0., iTime * .1)));
   vec3 beam = vec3(0.);

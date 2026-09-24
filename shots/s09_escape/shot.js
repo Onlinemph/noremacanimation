@@ -7,7 +7,7 @@ const T_RAM = 8.0, T_THROW = 9.45, T_EXT = 11.0, T_EXPL = 12.6;
 export default {
   duration: 18,
   fps: 24,
-  sceneScale: 0.62,
+  sceneScale: 0.6,
 
   textures: [
     // iTex0: top half = АНГАР 9 stencil for the wall over the doors, bottom half = ОПАСНО door stencil
@@ -57,12 +57,12 @@ export default {
       aberr: 0.0016 + 0.003 * boom,
       vignette: 1.1,
       bloom: ext ? 0.45 : 0.4,
-      exposure: 1.0,
+      exposure: 1.0 + (b >= 0 ? 0.5 * Math.exp(-b * 6) : 0),   // multiplicative: blacks stay black
       temp: ext ? 0.0 : 0.05,
       contrast: 1.1,
       sat: 1.0,
       shake: 2.6 * ram + 3.0 * boom + (t > 5 && t < T_RAM ? 0.35 : 0.1) + (t > 0.9 && t < 1.4 ? 0.3 : 0),
-      flash: b >= 0 ? 0.55 * Math.exp(-b * 9) : 0,
+      flash: 0,
       flashColor: [1.0, 0.72, 0.4],
       fade: 0,
       lift: [0.0, 0.0, 0.01],
