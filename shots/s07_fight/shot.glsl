@@ -2,6 +2,7 @@
 // uP: 0 KS flash, 1 pump, 2 recoil, 3 left-gun flash, 4 time since last left-gun round (-1 none),
 //     6 flare on, 7 flare arc progress, 8 lens blood, 9 crowd turn, 10 crowd run, 11-13 aim point, 14 t
 
+#define ZERO min(iFrame, 0)   // opaque loop bound: stops the compiler unrolling/inlining big bodies
 #define MF_WALL 70.
 #define MF_FLOOR 71.
 #define MF_CEIL 72.
@@ -60,7 +61,7 @@ void monsterState(int i, float t, out vec3 pos, out float yaw, out float run, ou
 
 vec3 cPos[7]; float cYaw[7], cRun[7], cFall[7], cFar[7];
 void cacheMonsters(float t){
-  for (int i = 0; i < NM; i++){
+  for (int i = ZERO; i < NM; i++){
     vec3 pos; float yaw, run, fall;
     monsterState(i, t, pos, yaw, run, fall);
     cPos[i] = pos; cYaw[i] = yaw; cRun[i] = run; cFall[i] = fall;
@@ -74,7 +75,7 @@ float cheapMonster(vec3 q, float run, float t, float seed){
   float d = sdTaper(q, hip, sh, .12, .17);
   d = smin(d, sdSphere(q - sh - vec3(.08 * (hash11(seed) - .5), .16, .1), .1), .04);
   float ph = t * mix(1.1, 6.2, run) + seed * 13.7;
-  for (int s = 0; s < 2; s++){
+  for (int s = ZERO; s < 2; s++){
     float sg = s == 0 ? -1. : 1.;
     vec3 a = sh + vec3(.2 * sg, 0., 0.);
     d = min(d, sdTaper(q, a, a + vec3(.05 * sg, -.7 + .4 * run, .2 + .4 * run * (.5 + .5 * sin(ph + sg))), .05, .03));
@@ -83,19 +84,31 @@ float cheapMonster(vec3 q, float run, float t, float seed){
   return d;
 }
 
-vec2 monsterSDF(vec3 p, int i, float t){
-  vec3 pos = cPos[i]; float yaw = cYaw[i], run = cRun[i], fall = cFall[i];
-  vec3 mp = p - pos;
-  if (length(mp.xz) > 2.6) return vec2(length(mp.xz) - 2.4, 0.);
-  mp.xz *= rot2(yaw);
+// transform a world point into monster i's local (posed) frame
+vec3 monsterLocal(vec3 p, int i){
+  vec3 mp = p - cPos[i];
+  mp.xz *= rot2(cYaw[i]);
+  float fall = cFall[i];
   if (fall != 0.){
     mp.y -= .1 * abs(fall) / 1.55;
     mp = rotX(mp, fall);
   }
+  return mp;
+}
+int gSel0 = -1, gSel1 = -1;     // the (at most two) monsters this pixel's ray passes near: full detail
+int gNear[4]; int gNNear = 0;   // monsters this ray passes near (any LOD)
+int gNFull = 0; int gNGun = 0; int gNCrowd = 0;
+vec2 monsterCoarse(vec3 p, int i, float t){
+  vec3 mp = monsterLocal(p, i);
+  float b = sdCapsule(mp, vec3(0., .25, 0.), vec3(0., 1.8, .3), .85);
+  if (b > .15 || i == gSel0 || i == gSel1) return vec2(max(b, .15), 0.);
+  return vec2(cheapMonster(mp, cRun[i], t + float(i) * 3.1, mSeed(i)), M_CLOTH + .5);
+}
+vec2 monsterFull(vec3 p, int i, float t){
+  vec3 mp = monsterLocal(p, i);
   float b = sdCapsule(mp, vec3(0., .25, 0.), vec3(0., 1.8, .3), .85);
   if (b > .15) return vec2(b, 0.);
-  if (cFar[i] > .5) return vec2(cheapMonster(mp, run, t + float(i) * 3.1, mSeed(i)), M_CLOTH + .5);
-  return sdMonster(mp, t + float(i) * 3.1, mSeed(i), run);
+  return sdMonster(mp, t + float(i) * 3.1, mSeed(i), cRun[i]);
 }
 
 // cheap crowd silhouettes for the flare reveal, rows at the far end
@@ -120,7 +133,7 @@ vec2 crowd(vec3 p){
   vec3 hd = sh + vec3(.12 * (hash21(id + 3.) - .5) + .08 * twitch, .17, .1);
   float d = sdTaper(q, hip, sh, .12, .17);
   d = smin(d, sdSphere(q - hd, .1), .04);
-  for (int s = 0; s < 2; s++){
+  for (int s = ZERO; s < 2; s++){
     float sg = s == 0 ? -1. : 1.;
     vec3 a = sh + vec3(.2 * sg, 0., 0.);
     vec3 hnd = a + vec3(.05 * sg, -.75 + .4 * run, .2 + .4 * run);
@@ -159,7 +172,7 @@ vec2 sdKS23Detail(vec3 p, float pump){
   float prof = -1e5;
   const int NP = 6;
   vec2 P[6] = vec2[6](vec2(-.125, .052), vec2(-.555, .012), vec2(-.565, -.148), vec2(-.30, -.082), vec2(-.17, -.062), vec2(-.125, -.035));
-  for (int i = 0; i < NP; i++){
+  for (int i = ZERO; i < NP; i++){
     vec2 e = P[(i + 1) % NP] - P[i];
     vec2 nn = normalize(vec2(e.y, -e.x));
     prof = max(prof, dot(q - P[i], nn));
@@ -227,29 +240,32 @@ vec2 room(vec3 p){
 vec2 map(vec3 p){
   vec2 r = room(p);
   float t = uP[14];
-  for (int i = 0; i < NM; i++){
-    if (mSeed(i) < 0.) continue;
-    r = opU(r, monsterSDF(p, i, t));
-  }
-  r = opU(r, crowd(p));
-  r = opU(r, gunSDF(p));
+  // only monsters this pixel's ray passes near; data-dependent loop counts so SwiftShader skips the rest
+  for (int k = 0; k < gNNear; k++) r = opU(r, monsterCoarse(p, gNear[k], t));
+  for (int k = 0; k < gNFull; k++) r = opU(r, monsterFull(p, k == 0 ? gSel0 : gSel1, t));
+  for (int k = 0; k < gNCrowd; k++) r = opU(r, crowd(p));
+  for (int k = 0; k < gNGun; k++) r = opU(r, gunSDF(p));
   return r;
 }
 
 vec3 calcNormal(vec3 p){
-  const vec2 k = vec2(1., -1.); const float e = .0012;
-  return normalize(k.xyy * map(p + k.xyy * e).x + k.yyx * map(p + k.yyx * e).x + k.yxy * map(p + k.yxy * e).x + k.xxx * map(p + k.xxx * e).x);
+  vec3 n = vec3(0.);
+  for (int i = ZERO; i < 4; i++){
+    vec3 e = .5773 * (2. * vec3(float(((i + 3) >> 1) & 1), float((i >> 1) & 1), float(i & 1)) - 1.);
+    n += e * map(p + e * .0012).x;
+  }
+  return normalize(n);
 }
 float calcAO(vec3 p, vec3 n){
   float o = 0., s = 1.;
-  for (int i = 0; i < 2; i++){ float h = .05 + .15 * float(i); o += (h - map(p + n * h).x) * s; s *= .7; }
+  for (int i = ZERO; i < 2; i++){ float h = .05 + .15 * float(i); o += (h - map(p + n * h).x) * s; s *= .7; }
   return clamp(1. - 2.2 * o, 0., 1.);
 }
 
 // blood pools under the dead
 float bloodPools(vec3 p, float t){
   float m = 0.;
-  for (int i = 0; i < NM; i++){
+  for (int i = ZERO; i < NM; i++){
     float th = mHit(i);
     if (t < th + .3) continue;
     vec3 pos = cPos[i];
@@ -313,7 +329,7 @@ Lit lighting(vec3 p, vec3 n, vec3 v, float rough){
   Lit L; L.d = vec3(0.); L.s = vec3(0.);
   float t = uP[14];
   // rotating red beacons
-  for (int i = 0; i < 2; i++){
+  for (int i = ZERO; i < 2; i++){
     vec3 bp = vec3(0., 2.9, i == 0 ? 7. : 17.);
     vec3 dir = beaconDir(bp.z, t);
     float cone = smoothstep(.72, .93, dot(normalize(p - bp), dir));
@@ -338,14 +354,14 @@ Lit lighting(vec3 p, vec3 n, vec3 v, float rough){
 // blood spray particles for the hits
 vec4 bloodSpray(vec3 ro, vec3 rd, float maxD, float t){
   vec4 acc = vec4(0.);
-  for (int i = 0; i < NM; i++){
+  for (int i = ZERO; i < NM; i++){
     float d = t - mHit(i);
     if (d < 0. || d > 1.4) continue;
     vec3 pos; float yaw, run, fall;
     monsterState(i, mHit(i), pos, yaw, run, fall);
     vec3 o = pos + vec3(0., 1.25, 0.);
     float ks = mKS(i);
-    for (int k = 0; k < 18; k++){
+    for (int k = ZERO; k < 18; k++){
       vec3 hsh = hash33(vec3(float(i), float(k), 3.));
       vec3 vel = normalize(vec3(hsh.x - .5, hsh.y * .8 - .1, .4 + hsh.z * (ks > .5 ? 1.2 : .5))) * (2. + 5. * hsh.x) * (ks > .5 ? 1. : .6);
       if (i == 6 && k < 7) vel.z = -abs(vel.z) - 3.;                  // point blank: toward the camera
@@ -370,6 +386,20 @@ vec3 render(vec2 fc){
   vec3 ta = aimP + vec3(.08 * (noise2(vec2(t * 1.3, 2.)) - .5), .06 * (noise2(vec2(t * 1.1, 5.)) - .5) + rec * .5, 0.);
   vec3 rd = camRay(fc, gRo, ta, 1.3, .02 * sin(t * .7) - .04 * rec);
   cacheMonsters(t);
+  float best0 = 1e5, best1 = 1e5;
+  for (int i = ZERO; i < NM; i++){
+    vec3 c = cPos[i] + vec3(0., .9, 0.);
+    float tc = dot(c - gRo, rd);
+    if (tc < -1.5) continue;
+    float miss = length(gRo + rd * max(tc, 0.) - c);
+    if (miss > 1.9) continue;
+    if (gNNear < 4){ gNear[gNNear] = i; gNNear++; }
+    if (cFar[i] > .5) continue;
+    if (tc < best0){ best1 = best0; gSel1 = gSel0; best0 = tc; gSel0 = i; }
+    else if (tc < best1){ best1 = tc; gSel1 = i; }
+  }
+  gNFull = gSel0 < 0 ? 0 : (gSel1 < 0 ? 1 : 2);
+  gNCrowd = uP[6] > 0. ? 1 : 0;
   vec3 f = normalize(ta - gRo);
   vec3 rgt = normalize(cross(f, vec3(0., 1., 0.)));
   vec3 up = cross(rgt, f);
@@ -386,9 +416,16 @@ vec3 render(vec2 fc){
   vec3 fa = vec3(1.6, 1.4, 1.), fb = vec3(-.3, .05, 16.6);
   float fk = uP[7];
   gFlare = mix(fa, fb, fk) + vec3(0., 3.2 * fk * (1. - fk), 0.);
-
+  // does this ray pass near the gun? (closest distance between the view ray and the gun's axis)
+  {
+    vec3 s0 = gGunO - gGunF * .62, u = gGunF * 1.32, w0 = gRo - s0;
+    float bb = dot(rd, u), cc = dot(u, u), dd = dot(rd, w0), ee = dot(u, w0);
+    float den = max(cc - bb * bb, 1e-6);
+    float sc = max((bb * ee - cc * dd) / den, 0.), tq = clamp((ee - bb * dd) / den, 0., 1.);
+    gNGun = length(gRo + rd * sc - (s0 + u * tq)) < .2 ? 1 : 0;
+  }
   float d = 0.; vec2 h = vec2(0.); bool hit = false;
-  for (int i = 0; i < 120; i++){
+  for (int i = ZERO; i < 120; i++){
     h = map(gRo + rd * d);
     if (h.x < .0015 * (1. + d)){ hit = true; break; }
     d += h.x * .9;
@@ -413,11 +450,11 @@ vec3 render(vec2 fc){
   float dith = hash21(fc + fract(t * 3.) * 41.);
   float maxD = min(hit ? d : 40., 30.);
   vec3 fog = vec3(0.); float smokeA = 0.;
-  for (int i = 0; i < 9; i++){
+  for (int i = ZERO; i < 9; i++){
     float s = (float(i) + dith) / 9.; s = s * s * maxD;
     vec3 q = gRo + rd * s;
     float dens = .45 + .55 * noise3(q * .7 + vec3(0., t * .1, t * .2));
-    for (int b = 0; b < 2; b++){
+    for (int b = ZERO; b < 2; b++){
       vec3 bp = vec3(0., 2.9, b == 0 ? 7. : 17.);
       vec3 L = q - bp; float dl = length(L);
       fog += vec3(1., .06, .03) * smoothstep(.8, .95, dot(L / dl, beaconDir(bp.z, t))) * 3. / (1. + dl * dl * .15) * dens;

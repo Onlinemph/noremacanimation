@@ -88,7 +88,9 @@ if (stills) {
   const ff = spawn(FFMPEG, ['-y', '-loglevel', 'error', '-f', 'rawvideo', '-pix_fmt', 'rgba', '-s', `${W}x${H}`, '-r', String(fps), '-i', '-',
     '-c:v', 'libx264', '-preset', 'medium', '-crf', '14', '-pix_fmt', 'yuv420p', out], { stdio: ['pipe', 'inherit', 'inherit'] });
   const t0 = Date.now();
+  let t1 = 0;
   for (let i = 0; i < n; i++) {
+    if (i === 1) t1 = Date.now();
     const t = from + i / fps;
     const b = await page.evaluate(([t, i]) => window.ENGINE.frameRaw(t, i), [t, Math.round(t * fps)]);
     const buf = Buffer.from(b, 'base64');
@@ -100,7 +102,8 @@ if (stills) {
   }
   ff.stdin.end();
   await new Promise(r => ff.on('close', r));
-  console.log(`\n-> ${path.relative(ROOT, out)}`);
+  if (n > 1) console.log(`\nsteady: ${((Date.now() - t1) / 1000 / (n - 1)).toFixed(2)} s/frame (excluding first frame)`);
+  console.log(`-> ${path.relative(ROOT, out)}`);
 }
 await browser.close();
 server.close();

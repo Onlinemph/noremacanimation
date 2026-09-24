@@ -208,8 +208,10 @@ vec2 sdMonster(vec3 p, float t, float seed, float run){
 
   // tendrils of the lake organism writhing out of the wound
   float tend = 1e5;
-  if (length(bq) < .7){
-    for (int k = 0; k < 4; k++){
+  // (loops with a data-dependent trip count are genuinely skipped by SwiftShader; ifs are not)
+  int nTend = length(bq) < .7 ? 4 : 0;
+  {
+    for (int k = 0; k < nTend; k++){
       float fk = float(k);
       vec3 a = vec3((hash11(sd + fk) - .5) * .06, -.2 + fk * .1, .06);
       float len = .1 + .12 * run + .06 * hash11(sd + fk * 3.);
@@ -228,9 +230,9 @@ vec2 sdMonster(vec3 p, float t, float seed, float run){
   // detail only when the sample is near the head; otherwise a conservative bound
   float head, mouth, eyes, teeth;
   float hb = length(hq - vec3(0., -.07, .02)) - .21;
-  if (hb > .03){
-    head = hb; mouth = 1.; eyes = hb; teeth = hb;
-  } else {
+  head = hb; mouth = 1.; eyes = hb; teeth = hb;
+  int nHead = hb > .03 ? 0 : 1;
+  for (int hk = 0; hk < nHead; hk++){
     float skull = sdEllipsoid(hq - vec3(0., .025, -.015), vec3(.072, .095, .09));
     // brow ridge, cheekbones, sunken temples, narrow chin
     skull = smin(skull, sdCapsule(hq, vec3(-.04, .042, .072), vec3(.04, .042, .072), .008), .02);
@@ -280,7 +282,8 @@ vec2 sdMonster(vec3 p, float t, float seed, float run){
     vec3 side = normalize(cross(hd, f) + 1e-4);
     vec3 palm = W + hd * .07;
     limbs = min(limbs, sdTaper(p, W, palm, .026, .02));
-    if (length(p - palm) < .3) for (int k = 0; k < 3; k++){
+    int nClaw = length(p - palm) < .3 ? 3 : 0;
+    for (int k = 0; k < nClaw; k++){
       float kk = float(k) - 1.;
       vec3 k1 = palm + hd * .07 + side * kk * .025;
       vec3 k2 = k1 + normalize(hd + f * .7 * (1. - run) - u * .2) * .11;
