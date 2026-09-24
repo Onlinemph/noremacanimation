@@ -32,7 +32,7 @@ bool terrainHit(vec3 ro, vec3 rd, out float dist){
   if (rd.y > 0.02) { dist = TERR_RANGE; return false; }
   float prevY = ro.y - terrainH(ro.xz);
   float prevD = 0.0;
-  for (int i = 1; i <= 32; i++){
+  for (int i = 1; i <= 24; i++){
     float dd = float(i) * TERR_STEP;
     vec3 p = ro + rd * dd;
     float y = p.y - terrainH(p.xz);
@@ -288,7 +288,7 @@ vec3 render(vec2 fc){
 
   float tDist; bool tHit = terrainHit(ro, rd, tDist);
   float vd = 0.25; bool vHit = false; float vMat = 0.;
-  for (int i = 0; i < 26; i++){
+  for (int i = 0; i < 20; i++){
     vec3 p = ro + rd * vd - vRef;
     vec2 h = sdVehicleLite(p);
     if (h.x < .003) { vHit = true; vMat = h.y; break; }
@@ -296,7 +296,7 @@ vec3 render(vec2 fc){
     if (vd > 30.0) break;
   }
   float bd = 0.3; bool bHit = false; float bMat = 0.;
-  for (int i = 0; i < 40; i++){
+  for (int i = 0; i < 28; i++){
     vec3 p = ro + rd * bd;
     vec2 h = mapBaseBounded(p);
     if (h.x < .004) { bHit = true; bMat = h.y; break; }

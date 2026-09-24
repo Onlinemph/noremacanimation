@@ -85,3 +85,28 @@ tank_burst, liquid_splash, impact, whoosh, music_hit`. Optional `"dur"` (seconds
 Sync cues exactly to visual events (muzzle flash frame = shot cue).
 
 Do not edit files outside your own `shots/<name>/` directories. Do not commit.
+
+## Lessons from the lead's review (read before writing a line)
+
+First-pass shots were rejected for these reasons. Don't repeat them.
+
+- **Flat, evenly lit frames.** Every rejected interior was lit like an office or a bathroom. Real
+  darkness: most of the frame near black, light comes from 1–3 motivated sources with falloff
+  (inverse square), pools of light, shadowed corners. Add bounce fill only near lit areas.
+- **Specular not attenuated.** `spec * lightCol` without the distance falloff blows walls out to white.
+  Every light term (diffuse AND specular) must use the same attenuation.
+- **Primitive props.** A vehicle as one red box, a base as one grey cube, a door as a flat plane,
+  tanks as flat green slabs: all rejected. Model the recognisable features (Sno-Cat: four separate
+  pontoon tracks, cab with windows, light bar; blast door: thick slab with a rim, wheel, hinges,
+  dogs, recessed frame; specimen tank: glass cylinder with steel caps top and bottom, rim highlights,
+  liquid inside with a visible meniscus, bubbles).
+- **Resolution too low.** `sceneScale` under ~0.55 turns silhouettes into mush. Stay ≥ 0.6. Get
+  speed from bounding volumes, fewer steps, cheaper shading, not from resolution.
+- **White-out.** A burst or explosion that turns the frame into flat white or pale green is not a
+  money shot. Keep blacks black around the hot element; bright things must be small relative to the frame.
+- **Camera basis.** `camRay` in common has screen-right = world −X. If you write your own camera,
+  check orientation with a test still (text on textures reads mirrored if you get it wrong).
+- **Monster framing.** When a scene calls for the monster's face, check the monster faces the
+  camera: `sdMonster` faces +Z in its local frame, rotate accordingly.
+- **Reference quality bar:** look at `build/stills/s10_end_2.png`, `s06_armory_1.5.png`,
+  `s06_armory_5.9.png`, `s01_signal_9.4.png` (approved). Match or beat that.

@@ -1,366 +1,486 @@
-// s02_ice — polar plateau blizzard, aurora, an approaching Sno-Cat.
-// Materials (local ids, avoid clashing with M_* from common):
-#define V_BODY   20.0
-#define V_TRACK  21.0
-#define V_LAMP   22.0
-#define V_GLASS  23.0
-#define V_CHROME 24.0
+// s02_ice (12 s) — polar night blizzard on the plateau. A Tucker Sno-Cat emerges from the
+// blowing snow, headlight cones first, and passes close by the low camera (~9.8 s); the camera
+// pans to follow it and lets it go, tail lights receding into the spindrift.
+//
+// Approach (cheap 2.5D like the approved s10 exterior): analytic ground plane with sastrugi
+// normals, analytic sky, the Sno-Cat raymarched only inside its bounding box, a few dithered
+// volumetric samples for the headlight cones, and world-anchored layers of wind-driven snow streaks.
+//
+// uP[0] = gust (0..1), from shot.js so the post shake matches.
 
-const vec2 WIND = vec2(0.92, 0.39);          // wind direction (xz), roughly normalized
-const float WSPD = 1.6;
-// screen-space wind direction: blizzard blows mostly SIDEWAYS across frame, slight downward bias
-const vec2 SWIND = normalize(vec2(1.0, -0.22));
+// ============================================================ vehicle state ===
+vec3 gV;          // vehicle ground-center origin (world)
+vec2 gF2;         // heading (world xz), local +Z maps to this
+float gPitch, gRoll, gRock;
+mat2 gMP, gMR;
 
-// ---------------------------------------------------------------- terrain ---
-// Cheap-ish height field: rolling plateau + wind-aligned sastrugi ridges.
-float terrainH(vec2 p){
-  float base = (noise2(p * 0.012) * 2.0 - 1.0) * 0.5;
-  vec2 w = vec2(dot(p, WIND), dot(p, vec2(-WIND.y, WIND.x)));
-  // sastrugi: long ridges running along the wind, spaced several metres apart across it
-  float n1 = noise2(vec2(w.x * 0.025, w.y * 0.16) + base * 0.8);
-  float ridge = pow(1.0 - abs(2.0 * n1 - 1.0), 2.4) * 0.34;
-  float n2 = noise2(vec2(w.x * 0.05, w.y * 0.34) + base * 1.3 + 11.0);
-  ridge += pow(1.0 - abs(2.0 * n2 - 1.0), 3.0) * 0.14;
-  float fine = (noise2(p * 1.1 + base) - 0.5) * 0.02;
-  return base * 0.25 + ridge + fine;
+vec3 vehPos(float t){ return vec3(-6.0 - .25 * sin(t * .4), 0., 50. - 5.1 * t); }
+
+void vehicleState(float t){
+  gV = vehPos(t);
+  float hdg = PI + .03 * sin(t * .5);
+  gF2 = vec2(sin(hdg), cos(hdg));
+  gPitch = .022 * sin(t * 2.1) + .01 * sin(t * 5.3 + 1.);
+  gRoll = .014 * sin(t * 1.7 + 1.);
+  gRock = .05 * sin(t * 2.6);
+  gMP = rot2(gPitch); gMR = rot2(gRoll);
+}
+// world vector -> local vector (no translation)
+vec3 toLoc(vec3 d){
+  vec3 q = vec3(dot(d.xz, vec2(gF2.y, -gF2.x)), d.y, dot(d.xz, gF2));
+  q.yz = gMP * q.yz;
+  q.xy = gMR * q.xy;
+  return q;
+}
+// local vector -> world vector
+vec3 toWld(vec3 q){
+  q.xy = q.xy * gMR;
+  q.yz = q.yz * gMP;
+  return vec3(q.x * gF2.y + q.z * gF2.x, q.y, -q.x * gF2.x + q.z * gF2.y);
+}
+vec3 locToWorldP(vec3 q){ return gV + toWld(q); }
+
+// ============================================================ Sno-Cat model ===
+// Tucker Sno-Cat, local frame: +Z forward, +Y up, +X = vehicle's left, origin at ground center.
+// ~5.3 m long, 2.8 m wide over the pontoons, 2.95 m tall to the light bar.
+#define MB_PAINT 1.
+#define MB_ROOF 2.
+#define MB_TRACK 3.
+#define MB_STEEL 4.
+#define MB_GLASS 5.
+#define MB_HEAD 6.
+#define MB_ROOFLAMP 7.
+#define MB_TAIL 8.
+#define MB_BLACK 9.
+
+const vec3 CAT_BC = vec3(0., 1.5, 0.);      // bounding box center (local)
+const vec3 CAT_BH = vec3(1.46, 1.56, 2.78); // bounding box half extents
+
+vec2 snoCat(vec3 p){
+  vec2 res = vec2(1e5, 0.);
+  // ---- four pontoon track assemblies, mirrored into one quadrant
+  vec3 q = vec3(abs(p.x), p.y, abs(p.z));
+  float rk = gRock * (p.x > 0. ? 1. : -1.) * (p.z > 0. ? 1. : -.7);
+  vec3 pc = q - vec3(1.08, .46, 1.58);
+  pc.yz = rot2(rk) * pc.yz;
+  // upturned toe on the outer (front/rear) end of each pontoon
+  float toe = smoothstep(.2, .95, pc.z) * .07;
+  pc.y -= toe;
+  float fz = abs(pc.z) - .54;
+  float prof = length(vec2(max(fz, 0.), pc.y)) - .44;          // stadium side profile
+  // grousers: steel cleats around the track perimeter
+  float s = fz < 0. ? pc.z : atan(pc.y, fz) * .44 + .7;
+  float gr = smoothstep(.22, .0, abs(fract(s * 7.2) - .5));
+  float ring = max(max(prof, -prof - .1), abs(pc.x) - .33);
+  ring -= .016 * gr * smoothstep(-.05, 0., prof);
+  float plate = max(prof + .035, abs(pc.x) - .27);             // inset side plate
+  float hub = sdCylX(pc, .15, .305);
+  res = opU(res, vec2(ring, MB_TRACK));
+  res = opU(res, vec2(min(plate, hub), MB_STEEL));
+  // spindle/strut from pontoon to chassis + leaf spring pack
+  float strut = sdCylX(q - vec3(.66, .5, 1.58), .07, .3);
+  strut = min(strut, sdBox(q - vec3(.66, .62, 1.58), vec3(.08, .05, .42)));
+  // chassis frame rails
+  strut = min(strut, sdBox(p - vec3(0., .72, 0.), vec3(.55, .12, 2.42)));
+  res = opU(res, vec2(strut, MB_BLACK));
+
+  // ---- body: hull with sloped hood, full-length cab + cargo box
+  float hull = sdRoundBox(p - vec3(0., 1.24, .03), vec3(1.0, .38, 2.56), .05);
+  hull = max(hull, dot(p - vec3(0., 1.62, 1.35), vec3(0., .995, .0995)));      // hood slopes to the nose
+  float cab = sdRoundBox(p - vec3(0., 2.16, -.6), vec3(.97, .56, 1.94), .07);
+  cab = max(cab, dot(p - vec3(0., 1.62, 1.36), vec3(0., .27, .963)));          // raked windshield
+  float body = min(hull, cab);
+  // recessed side windows (cab and cargo box)
+  vec3 wq = vec3(abs(p.x) - .97, p.y - 2.2, p.z);
+  float win = min(sdBox(wq - vec3(0., 0., .7), vec3(.035, .28, .5)), sdBox(wq - vec3(0., .04, -1.35), vec3(.035, .2, .72)));
+  float bodyW = max(body, -win);
+  // fender lips over the pontoons
+  float fend = sdBox(q - vec3(1.03, .98, 1.58), vec3(.2, .03, .78));
+  res = opU(res, vec2(bodyW, -win > body ? MB_GLASS : MB_PAINT));
+  res = opU(res, vec2(fend, MB_PAINT));
+  // white roof cap
+  res = opU(res, vec2(sdRoundBox(p - vec3(0., 2.75, -.6), vec3(1.01, .05, 1.99), .04), MB_ROOF));
+  // light bar on two posts, four lamps
+  float lb = sdBox(p - vec3(0., 2.9, 1.06), vec3(.95, .05, .06));
+  lb = min(lb, sdBox(vec3(abs(p.x) - .8, p.y - 2.84, p.z - 1.06), vec3(.03, .06, .03)));
+  vec3 lq = vec3(abs(p.x), p.y, p.z);
+  float rl = min(sdCylZ(lq - vec3(.28, 2.91, 1.14), .085, .06), sdCylZ(lq - vec3(.7, 2.91, 1.14), .085, .06));
+  res = opU(res, vec2(lb, MB_BLACK));
+  res = opU(res, vec2(rl, MB_ROOFLAMP));
+  // headlights in the nose + bumper + grille bar
+  float hl = sdCylZ(lq - vec3(.7, 1.36, 2.6), .13, .05);
+  res = opU(res, vec2(hl, MB_HEAD));
+  float bump = sdBox(p - vec3(0., .98, 2.64), vec3(1.06, .07, .07));
+  // exhaust stack beside the windshield
+  bump = min(bump, sdCylY(p - vec3(-.88, 2.2, 1.45), .045, .55));
+  // rear ladder to the roof
+  vec3 rq = p - vec3(.55, 1.95, -2.65);
+  float lad = sdBox(vec3(abs(rq.x) - .2, rq.y, rq.z), vec3(.018, .75, .018));
+  lad = min(lad, sdBox(vec3(rq.x, mod(rq.y + .15, .3) - .15, rq.z), vec3(.2, .012, .012)));
+  lad = max(lad, abs(rq.y) - .76);
+  bump = min(bump, lad);
+  res = opU(res, vec2(bump, MB_BLACK));
+  // tail lights
+  float tl = sdBox(lq - vec3(.82, 1.3, -2.55), vec3(.09, .07, .04));
+  res = opU(res, vec2(tl, MB_TAIL));
+  return res;
 }
 
-// Bounded linear march + binary refine for the height field (true SDF marching
-// is unstable for heightfields at grazing angles, so we do this explicitly).
-const float TERR_RANGE = 26.0;
-const float TERR_STEP = 0.65;
-bool terrainHit(vec3 ro, vec3 rd, out float dist){
-  // camera keeps ~0.55m clearance over local terrain; terrain height is bounded, so a ray
-  // pointing clearly upward can never cross it within TERR_RANGE — skip the march entirely.
-  if (rd.y > 0.02) { dist = TERR_RANGE; return false; }
-  float prevY = ro.y - terrainH(ro.xz);
-  float prevD = 0.0;
-  for (int i = 1; i <= 40; i++){
-    float dd = float(i) * TERR_STEP;
-    vec3 p = ro + rd * dd;
-    float y = p.y - terrainH(p.xz);
-    if (y < 0.0 && prevY >= 0.0){
-      float lo = prevD, hi = dd;
-      for (int k = 0; k < 5; k++){
-        float mid = (lo + hi) * 0.5;
-        vec3 pm = ro + rd * mid;
-        if (pm.y - terrainH(pm.xz) < 0.0) hi = mid; else lo = mid;
-      }
-      dist = hi; return true;
-    }
-    prevY = y; prevD = dd;
+vec3 catNormal(vec3 p){
+  const vec2 k = vec2(1, -1);
+  const float h = .004;
+  return normalize(k.xyy * snoCat(p + k.xyy * h).x + k.yyx * snoCat(p + k.yyx * h).x +
+                   k.yxy * snoCat(p + k.yxy * h).x + k.xxx * snoCat(p + k.xxx * h).x);
+}
+
+vec2 boxHit(vec3 ro, vec3 rd, vec3 c, vec3 h){
+  vec3 m = 1. / rd;
+  vec3 n = m * (ro - c);
+  vec3 k = abs(m) * h;
+  vec3 t1 = -n - k, t2 = -n + k;
+  return vec2(max(max(t1.x, t1.y), t1.z), min(min(t2.x, t2.y), t2.z));
+}
+float sphHit(vec3 ro, vec3 rd, vec3 c, float r){
+  vec3 oc = ro - c; float b = dot(oc, rd); float h = b * b - dot(oc, oc) + r * r;
+  return h < 0. ? -1. : -b - sqrt(h);
+}
+
+// march the vehicle in local space. returns t (world units == local units) or -1
+float marchCat(vec3 rol, vec3 rdl, float tmax, out float mat){
+  mat = 0.;
+  vec2 bb = boxHit(rol, rdl, CAT_BC, CAT_BH);
+  if (bb.x > bb.y || bb.y < 0. || bb.x > tmax) return -1.;
+  float t = max(bb.x, 0.);
+  float tend = min(bb.y, tmax);
+  for (int i = 0; i < 72; i++){
+    vec2 h = snoCat(rol + rdl * t);
+    if (h.x < .0015 * t + .001){ mat = h.y; return t; }
+    t += h.x * .9;
+    if (t > tend) break;
   }
-  // Beyond the detailed march range the exact ridge shape no longer matters (fog hides it) —
-  // fall back to an analytic flat-plane intersection so "ground" keeps going to the horizon
-  // instead of hard-cutting to sky right where the detailed search gives up.
-  if (rd.y < -0.0008){
-    float planeD = -ro.y / rd.y;
-    if (planeD > TERR_RANGE) { dist = min(planeD, 150.0); return true; }
+  return -1.;
+}
+
+// ============================================================ lights ===
+const vec3 HLCOL = vec3(1., .88, .68);       // halogen headlights
+const vec3 RLCOL = vec3(1., .93, .8);        // roof bar lamps
+const vec3 TLCOL = vec3(1., .06, .03);       // tail lights
+vec3 gHL0, gHL1, gRL, gTL0, gTL1, gHD, gRD, gFW;
+
+void setupLights(){
+  gHL0 = locToWorldP(vec3(.7, 1.36, 2.66));
+  gHL1 = locToWorldP(vec3(-.7, 1.36, 2.66));
+  gRL = locToWorldP(vec3(0., 2.91, 1.22));
+  gTL0 = locToWorldP(vec3(.82, 1.3, -2.6));
+  gTL1 = locToWorldP(vec3(-.82, 1.3, -2.6));
+  gHD = normalize(toWld(vec3(0., -.07, 1.)));
+  gRD = normalize(toWld(vec3(0., -.13, 1.)));
+  gFW = toWld(vec3(0., 0., 1.));
+}
+float spotI(vec3 x, vec3 lp, vec3 ld, float co, float ci, out vec3 L){
+  vec3 d = lp - x; float dd = dot(d, d); L = d * inversesqrt(dd);
+  float c = dot(-L, ld);
+  return smoothstep(co, ci, c) * (.35 + .65 * smoothstep(ci, 1., c)) / (dd + 1.5);
+}
+// irradiance at x from all the vehicle's lamps. n = surface normal, or 0 for volume
+// (then the forward-scattering phase toward the camera is used, view dir rd).
+vec3 lampsAt(vec3 x, vec3 n, vec3 rd){
+  vec3 L; vec3 acc = vec3(0.);
+  float vol = step(dot(n, n), .5);
+  float i;
+  i = spotI(x, gHL0, gHD, .86, .965, L);
+  acc += HLCOL * 160. * i * mix(max(dot(n, L), 0.), hgPhase(dot(-L, rd), .55) * 4., vol);
+  i = spotI(x, gHL1, gHD, .86, .965, L);
+  acc += HLCOL * 160. * i * mix(max(dot(n, L), 0.), hgPhase(dot(-L, rd), .55) * 4., vol);
+  i = spotI(x, gRL, gRD, .72, .93, L);
+  acc += RLCOL * 190. * i * mix(max(dot(n, L), 0.), hgPhase(dot(-L, rd), .45) * 4., vol);
+  // tail lights: weak, wide
+  vec3 tc = (gTL0 + gTL1) * .5;
+  vec3 dt = tc - x; float d2 = dot(dt, dt); vec3 Lt = dt * inversesqrt(d2);
+  float back = smoothstep(-.2, .5, dot(-Lt, -gFW));
+  acc += TLCOL * 5. * back / (d2 + 1.) * mix(max(dot(n, Lt), 0.), .35, vol);
+  return acc;
+}
+
+// ============================================================ camera ===
+vec3 gRo, gFw, gRt, gUp; float gFocal;
+void setupCam(float t){
+  gRo = vec3(0., .72 + .015 * sin(t * 1.3), 0.);
+  float tl = t - .35;                              // the operator lags the vehicle a little
+  tl = tl < 10.2 ? tl : 10.2 + .45 * (1. - exp(-(tl - 10.2) * 2.2));
+  vec3 target = vehPos(tl) + vec3(0., 1.35, 0.);
+  // start framed a little off the vehicle so the lights sit on the right third
+  target.x += .9 * (1. - smoothstep(2., 8., t));
+  vec3 f = normalize(target - gRo);
+  // handheld drift
+  float hx = (noise2(vec2(t * .7, 1.)) - .5) * .014, hy = (noise2(vec2(t * .6, 5.)) - .5) * .01;
+  vec2 hz = normalize(f.xz); f = normalize(f + vec3(hz.y, 0., -hz.x) * hx + vec3(0., hy, 0.));
+  gFw = f;
+  gRt = normalize(cross(gFw, vec3(0., 1., 0.)));   // screen right (right-handed world)
+  gUp = cross(gRt, gFw);
+  gFocal = mix(2.5, 1.32, smoothstep(.5, 9.6, t));
+}
+vec3 camDir(vec2 uv){ return normalize(uv.x * gRt + uv.y * gUp + gFocal * gFw); }
+vec3 proj(vec3 wp){ vec3 r = wp - gRo; float z = dot(r, gFw); return vec3(vec2(dot(r, gRt), dot(r, gUp)) / max(z, .001) * gFocal, z); }
+
+// ============================================================ sky ===
+const vec3 SKYAMB = vec3(.010, .014, .024);
+vec3 skyCol(vec3 rd, float t, float gust){
+  float y = max(rd.y, 0.);
+  vec3 c = mix(vec3(.004, .005, .009), vec3(.001, .0015, .003), smoothstep(0., .4, y));
+  // spindrift veil drifting across the sky
+  vec2 sp = rd.xz / (y + .08);
+  float veil = fbm2(vec2(sp.x * .5 + t * .9, sp.y * .5 + t * .15) + 3.);
+  float clear = smoothstep(.62, .3, veil) * (1. - .6 * gust);
+  c += stars(rd) * vec3(.7, .8, 1.) * .5 * clear * smoothstep(.05, .2, y);
+  // faint aurora curtain, partly veiled
+  if (y > .01){
+    vec2 ap = rd.xz / (y + .25);
+    float w = ap.x * .45 + 1.3 * noise2(ap * .25 + vec2(t * .03, 0.)) + t * .02;
+    float band = exp(-pow(ap.y - 1.6 - .5 * sin(w * 1.3), 2.) * 1.2);
+    float rays = .55 + .45 * noise2(vec2(w * 9., t * .35));
+    float hgt = smoothstep(.02, .18, y) * smoothstep(.75, .25, y);
+    vec3 ac = mix(vec3(.05, .55, .28), vec3(.35, .12, .5), smoothstep(.15, .45, y));
+    c += ac * band * rays * hgt * .07 * (.35 + .65 * clear);
   }
-  dist = TERR_RANGE; return false;
+  // horizon lost in blowing snow
+  c += vec3(.014, .019, .03) * exp(-y * 9.) * (1. + .6 * gust) * (.75 + .5 * veil);
+  return c;
 }
 
-// ---------------------------------------------------------------- vehicle ---
-// Local frame: nose at +z, up +y, origin at ground contact. Roughly 4.6m long.
-// Trimmed to the primitives that actually read at speed/distance: hull+cab merged into one
-// pass (mirrored track on both sides via abs(x)), no separate windshield/exhaust — keeps the
-// per-step primitive count down since this is evaluated at full detail for every near pixel.
-vec2 sdSnoCat(vec3 p){
-  vec2 r = vec2(1e5, V_BODY);
-  float hull = sdRoundBox(p - vec3(0., .78, .0), vec3(1.05, .5, 2.05), .18);
-  vec3 cq = p - vec3(0., 1.62, .35);
-  float cab = sdRoundBox(cq, vec3(.9, .46, 1.1), .12);
-  r = opU(r, vec2(smin(hull, cab, .12), V_BODY));
-  r = opU(r, vec2(sdRoundBox(p - vec3(0., .95, 1.75), vec3(.85, .28, .35), .1), V_BODY));
-  vec3 tp = vec3(abs(p.x) - 1.18, p.y - .42, p.z);
-  r = opU(r, vec2(sdRoundBox(tp, vec3(.26, .42, 2.15), .2), V_TRACK));
-  // light bar spanning the roof, plus two round headlight housings set apart near the corners
-  r = opU(r, vec2(sdRoundBox(p - vec3(0., 2.04, .58), vec3(.62, .07, .09), .03), V_CHROME));
-  vec3 lp = vec3(abs(p.x) - .8, p.y - .92, p.z - 2.02);
-  r = opU(r, vec2(sdSphere(lp, .12), V_LAMP));
-  return r;
-}
-// vehicle-local coordinates of a world point (used for shading features tied to the body).
-vec3 vehLocal(vec3 p, vec3 vp){ vec3 q = p - vp; q.xz *= rot2(PI); return q; }
-
-// world-space vehicle placement: travels toward camera along -Z at fixed lane offset, passing left.
-vec3 vehiclePos(float t){
-  float vz = 96.0 - 9.6 * t;
-  return vec3(-4.3, 0., vz);
-}
-const float VHEAD = PI; // facing -Z (nose toward camera)
-
-// vp: precomputed world position of the vehicle's ground-contact point for this frame
-// (computed once in render(), sunk to local terrain height — avoids re-evaluating
-// terrainH inside the march loop).
-vec2 mapVehicle(vec3 p, vec3 vp){
-  vec3 q = p - vp;
-  q.xz *= rot2(VHEAD);
-  float bound = sdBox(q - vec3(0., .9, 0.), vec3(1.3, 1.2, 2.3));
-  if (bound > .35) return vec2(bound + .3, V_BODY);
-  return sdSnoCat(q);
-}
-bool vehicleHit(vec3 ro, vec3 rd, vec3 vp, out float dist, out float mat){
-  float d = 0.3;
-  for (int i = 0; i < 48; i++){
-    vec3 p = ro + rd * d;
-    vec2 h = mapVehicle(p, vp);
-    if (h.x < .005) { dist = d; mat = h.y; return true; }
-    d += h.x;
-    if (d > 140.0) break;
-  }
-  dist = 1e5; mat = 0.; return false;
-}
-vec3 vehicleNrm(vec3 p, vec3 vp){
-  vec2 e = vec2(.01, 0.);
-  return normalize(vec3(
-    mapVehicle(p + e.xyy, vp).x - mapVehicle(p - e.xyy, vp).x,
-    mapVehicle(p + e.yxy, vp).x - mapVehicle(p - e.yxy, vp).x,
-    mapVehicle(p + e.yyx, vp).x - mapVehicle(p - e.yyx, vp).x));
-}
-vec3 terrainNrm(vec3 p){
-  vec2 e = vec2(.03, 0.);
-  float hL = terrainH(p.xz - e.xy), hR = terrainH(p.xz + e.xy);
-  float hD = terrainH(p.xz - e.yx), hU = terrainH(p.xz + e.yx);
-  return normalize(vec3(hL - hR, 2.0 * e.x, hD - hU));
-}
-
-// -------------------------------------------------------------- snow fx -----
-float gustEnv(float t){
-  float g = exp(-pow((t - 2.2) / 0.9, 2.0)) + exp(-pow((t - 6.0) / 1.0, 2.0)) + exp(-pow((t - 9.7) / 0.8, 2.0));
-  return clamp(g, 0.0, 1.6);
-}
-// Screen-space wind-blown snow: several depth layers with parallax (far = small/dim/slow,
-// near = large/bright/fast with a long motion streak along SWIND). Returns (coverage, brightness).
-// Most flakes are faint; only the nearest layer gets any real brightness.
-vec2 snowStreaks(vec2 uv, float t, float gust){
-  float s = 0.0, br = 0.0;
-  vec2 dir = SWIND;
-  vec2 perp = vec2(-dir.y, dir.x);
-  const int NL = 3;
-  for (int i = 0; i < NL; i++){
-    float fi = float(i) / float(NL - 1);           // 0 = farthest, 1 = nearest
-    float scale = mix(85.0, 16.0, fi);              // far: tiny dense cells; near: big sparse cells
-    float speed = mix(0.5, 2.6, fi) * (1.0 + gust * 0.7);
-    float elong = mix(1.3, 6.0, fi);                // near flakes smear into long streaks
-    float density = mix(0.22, 0.045, fi);           // near layer is sparser (bigger, fewer flakes)
-    vec2 st = uv + vec2(fi * 7.1, fi * 2.9);
-    vec2 q = vec2(dot(st, dir), dot(st, perp)) * scale;
-    q.x -= t * speed * scale * 0.09;                // motion mostly along-wind (screen x-ish)
-    vec2 id = floor(q);
-    vec2 f = fract(q) - .5;
-    vec2 hh = hash22(id + fi * 23.7 + 5.0);
-    if (hh.x > density) continue;
-    vec2 fa = vec2(f.x / elong, f.y);
-    float dd = length(fa);
-    float soft = mix(0.28, 0.06, fi);               // far flakes are soft/blurred, near ones crisper
-    float flake = smoothstep(soft, 0.0, dd);
-    float layerBr = mix(0.07, 0.75, fi * fi * fi) * (0.35 + 0.65 * hh.y);
-    s += flake;
-    br += flake * layerBr;
-  }
-  return vec2(clamp(s, 0.0, 1.0), br);
-}
-// low-frequency spindrift texture over the sky dome so it isn't a flat card
-float skyTexture(vec3 dir, float t){
-  vec2 pp = dir.xz / max(dir.y, 0.05);
-  return fbm2(pp * 0.5 + WIND * t * 0.03);
-}
-
-// ------------------------------------------------------------------ shade ---
-// pl = vehicle-LOCAL coordinates of the hit point (see vehLocal) — used so grime/tread/window
-// features stay locked to the body instead of sliding as the vehicle drives through world space.
-vec3 vehicleAlbedo(float m, vec3 p, vec3 pl){
-  if (m == V_TRACK){
-    float tread = smoothstep(.42, .48, abs(fract(pl.z * 2.6) - .5));
-    return vec3(.05, .048, .045) * (0.55 + 0.35 * tread) * (0.7 + 0.4 * noise3(p * 40.));
-  }
-  if (m == V_GLASS)  return vec3(.02, .03, .035);
-  if (m == V_CHROME) return vec3(.22, .22, .24);
-  float grime = smoothstep(.35, .8, fbm3lo(p * 3.5 + 4.));
-  float frost = smoothstep(.5, .9, fbm3lo(p * 6.0 - 2.));
-  vec3 red = mix(vec3(.62, .09, .05), vec3(.22, .03, .02), grime);
-  return mix(red, vec3(.55, .58, .6), frost * .5);
-}
-// faint warm cab-window glow (frosted glass, backlit by nothing but sells "cab" silhouette)
-float vehWindowGlow(vec3 pl){
-  vec3 cq = pl - vec3(0., 1.62, .35);
-  float onFace = smoothstep(.14, .02, abs(cq.z - 1.1)) * smoothstep(.42, .2, abs(cq.x)) * smoothstep(.4, .1, abs(cq.y - .05));
-  return onFace;
-}
+// ============================================================ render ===
+float fbm3o(vec2 p){ float a = .5, s = 0.; for (int i = 0; i < 3; i++){ s += a * noise2(p); p = p * 2.07 + 11.3; a *= .5; } return s; }
 
 vec3 render(vec2 fc){
   float t = iTime;
-  vec2 uv2 = screenUV(fc);
+  float gust = uP[0];
+  vec2 uv = screenUV(fc);
+  vehicleState(t);
+  setupLights();
+  setupCam(t);
+  vec3 rd = camDir(uv);
+  vec3 ro = gRo;
+  float dither = hash31(vec3(fc, float(iFrame % 64)));
 
-  // camera: low, near sastrugi, slow pan to track the vehicle as it passes
-  vec3 camPos0 = vec3(0.15, 0.95, -1.4);
-  vec3 vp = vehiclePos(t);
-  vp.y = terrainH(vp.xz) + 0.03; // sink the vehicle onto the local snow surface
-  float bob = sin(t * 1.7) * .008;
-  vec3 ro = camPos0 + vec3(0., bob, 0.);
-  ro.y = max(ro.y, terrainH(ro.xz) + 0.55);
-  float followT = smoothstep(6.8, 11.2, t);
-  vec3 farTa = vec3(-0.6, 0.15, 9.0);
-  vec3 nearTa = vp + vec3(0., .8, -1.0);
-  vec3 ta = mix(farTa, nearTa, followT);
-  float shakeN = (noise2(vec2(t * 3.1, 5.)) - .5) * .02;
-  vec3 rd = camRay(fc, ro, ta + vec3(shakeN, 0., 0.), 1.35, 0.015 * sin(t * .6));
+  float sig = .022 + .03 * gust;       // extinction of the blizzard
+  vec3 fogC = vec3(.012, .016, .026) * (1. + .5 * gust);
 
-  // headlight positions (rotate local offsets by vehicle heading) — set wide, matching the light bar
-  vec2 offL = vec2(-.8, 2.02) * mat2(cos(VHEAD), -sin(VHEAD), sin(VHEAD), cos(VHEAD));
-  vec2 offR = vec2(.8, 2.02) * mat2(cos(VHEAD), -sin(VHEAD), sin(VHEAD), cos(VHEAD));
-  vec3 lightL = vp + vec3(offL.x, .92, offL.y);
-  vec3 lightR = vp + vec3(offR.x, .92, offR.y);
-  vec2 offF = vec2(0., 2.3) * mat2(cos(VHEAD), -sin(VHEAD), sin(VHEAD), cos(VHEAD));
-  vec3 aimDir = normalize(vec3(offF.x, -.05, offF.y));
-
-  // intersect terrain and vehicle separately, take the nearer
-  float tDist; bool tHit = terrainHit(ro, rd, tDist);
-  float vDist, vMat; bool vHit = vehicleHit(ro, rd, vp, vDist, vMat);
-  bool hitTerrain = tHit && (!vHit || tDist <= vDist);
-  bool hitVehicle = vHit && (!tHit || vDist < tDist);
-  float dist = hitVehicle ? vDist : (hitTerrain ? tDist : TERR_RANGE);
-
-  // sky: dark blue-grey (not saturated navy), broken up by a slow-drifting spindrift texture,
-  // aurora kept faint so it reads as a curtain glimpsed through haze rather than a poster.
-  vec3 upDir = normalize(vec3(0.05, 1.0, 0.02));
-  float skyTex = skyTexture(rd, t);
-  vec3 skyBase = mix(vec3(.006, .008, .012), vec3(.014, .017, .024), smoothstep(.3, .8, skyTex));
-  vec3 skyCol = skyBase * mix(0.7, 1.15, max(0., rd.y));
-  skyCol += stars(rd) * vec3(.75, .8, .95) * smoothstep(-.05, .3, rd.y) * smoothstep(.7, .3, skyTex);
-  skyCol += aurora(rd, t) * (0.55 + 0.3 * skyTex);
+  // ---------------- vehicle
+  vec3 rol = toLoc(ro - gV), rdl = toLoc(rd);
+  float mat;
+  float tGround = rd.y < 0. ? -ro.y / rd.y : 1e4;
+  float tv = marchCat(rol, rdl, min(tGround, 200.), mat);
+  float tHit = tv > 0. ? tv : tGround;
 
   vec3 col;
-  float gust = gustEnv(t);
-
-  if (hitVehicle || hitTerrain){
-    vec3 p = ro + rd * dist;
-    vec3 n = hitVehicle ? vehicleNrm(p, vp) : terrainNrm(p);
-    float mat = hitVehicle ? vMat : M_SNOW;
-    vec3 pl = hitVehicle ? vehLocal(p, vp) : vec3(0.);
-    vec3 albedo = (mat == M_SNOW) ? mix(vec3(.42, .5, .68), vec3(.88, .91, .99), smoothstep(-.15, .4, n.y)) * (0.68 + 0.55 * fbm3lo(p * 6.0))
-                                    : vehicleAlbedo(mat, p, pl);
-    float sparkle = (mat == M_SNOW) ? pow(hash31(floor(p * 40.0)), 22.0) * 6.0 : 0.0;
-    // sky-bounce ambient: kept subtle and NOT keyed to the full straight-up aurora sample
-    // (which stays bright even when the view-direction aurora near the horizon has faded
-    // to zero) — otherwise the ground reads brighter than the sky right at the skyline.
-    vec3 amb = (aurora(upDir, t) * 0.45 + vec3(.016, .02, .036)) * (0.55 + 0.45 * max(n.y, 0.0)) * (mat == M_SNOW ? 1.0 : .6);
-    // cold rim/fresnel light from the open sky — keeps silhouettes from going pure flat black
-    float fres = pow(1.0 - max(dot(n, -rd), 0.0), 3.0);
-    vec3 rim = vec3(.1, .13, .19) * fres * (mat == M_SNOW ? 0.3 : 1.8);
-    vec3 col3 = albedo * amb + rim;
-
-    for (int li = 0; li < 2; li++){
-      vec3 lp = li == 0 ? lightL : lightR;
-      vec3 L = lp - p; float ld = length(L); L /= ld;
-      // NOTE: spotLight() already bakes distance falloff into its return value — do not also
-      // multiply the coned terms by a separate atten, or the light dies by d^4 at range.
-      float cone = spotLight(p, lp, aimDir, .78, .93);
-      float dif = max(dot(n, L), 0.0);
-      float spec = pow(max(dot(reflect(-L, n), -rd), 0.0), 24.0);
-      vec3 lc = vec3(1.0, .82, .55) * cone * dif * 20.0;
-      // soft omnidirectional scatter: blowing snow throws headlight glow past the beam edge,
-      // and lets the vehicle's OWN lights read on its own body even outside the strict cone.
-      // Its own gentler falloff keeps it local to the vehicle instead of washing the whole
-      // far ground plane it's driving across.
-      float scatterAtten = 1.0 / (1.0 + ld * ld * .12);
-      float scatter = scatterAtten * (mat == M_SNOW ? 0.55 : 0.9);
-      col3 += albedo * (lc + vec3(1.0, .8, .55) * scatter) + spec * cone * 5.0;
-      col3 += sparkle * cone * vec3(1.0, .92, .8);
+  if (tv > 0.){
+    vec3 pl = rol + rdl * tv;
+    vec3 nl = catNormal(pl);
+    vec3 pw = ro + rd * tv;
+    vec3 nw = toWld(nl);
+    // albedo and grime
+    float grime = fbm3lo(pl * 3.);
+    float low = smoothstep(1.3, .6, pl.y);
+    vec3 alb = vec3(.5);
+    float spec = .3, rough = 32.;
+    vec3 emis = vec3(0.);
+    if (mat == MB_PAINT){
+      alb = vec3(.52, .08, .03) * (.75 + .4 * grime);
+      alb = mix(alb, vec3(.14, .1, .08), low * .6 + .25 * smoothstep(.55, .75, grime));
+      // hood/fender snow and rime
+      float sn = smoothstep(.55, .9, nl.y) * smoothstep(.35, .6, noise3(pl * 4.));
+      alb = mix(alb, vec3(.75, .8, .88), sn);
+      // grille slats in the nose
+      if (nl.z > .7 && pl.y < 1.55 && pl.y > 1.08 && abs(pl.x) < .45) alb *= .25 + .75 * step(.5, fract(pl.y * 14.));
+      // stencilled unit number on the doors
+      spec = .5; rough = 48.;
+    } else if (mat == MB_ROOF){
+      alb = vec3(.7, .72, .74) * (.8 + .25 * grime); spec = .35;
+    } else if (mat == MB_TRACK){
+      float caked = smoothstep(.45, .65, noise3(pl * 7.) + .25 * low);
+      alb = mix(vec3(.05, .05, .055), vec3(.6, .65, .72), caked * .8); spec = .6; rough = 20.;
+    } else if (mat == MB_STEEL){
+      alb = vec3(.09, .085, .08) * (.7 + .6 * grime);
+      alb = mix(alb, vec3(.6, .65, .72), smoothstep(.5, .7, noise3(pl * 5.)) * .7); spec = .3;
+    } else if (mat == MB_BLACK){
+      alb = vec3(.035); spec = .5;
+    } else if (mat == MB_HEAD){
+      alb = vec3(.1); if (nl.z > .6) emis = HLCOL * 9. * (1. - .5 * smoothstep(.07, .13, length(vec2(abs(pl.x) - .7, pl.y - 1.36))));
+    } else if (mat == MB_ROOFLAMP){
+      alb = vec3(.1); if (nl.z > .6) emis = RLCOL * 7.;
+    } else if (mat == MB_TAIL){
+      alb = vec3(.15, .02, .02); if (nl.z < -.6) emis = TLCOL * 3.;
     }
-    if (mat == V_LAMP) col3 = vec3(1.0, .86, .55) * 6.0;
-    if (hitVehicle) col3 += vec3(1.0, .55, .22) * vehWindowGlow(pl) * 0.22;
-    col = col3;
+    // windows: glass everywhere on the upper cab faces that face out (windshield/back included)
+    bool glass = mat == MB_GLASS;
+    if (mat == MB_PAINT){
+      if (nl.z > .8 && pl.y > 1.8 && pl.y < 2.58 && abs(pl.x) < .9 && abs(pl.x) > .04) glass = true;            // windshield (split)
+      if (nl.z < -.8 && pl.y > 1.95 && pl.y < 2.5 && abs(abs(pl.x) - .45) < .26 && pl.x > -.9 && !(pl.x > .25 && pl.x < .85)) glass = true; // rear window (door has ladder side)
+    }
+    vec3 V = -rd;
+    // --- lighting: sky ambient, bounce from its own lit snow pool, fog glow, spec glints
+    float ao = clamp(.35 + .65 * smoothstep(.3, 1.4, pl.y) + .3 * max(nl.y, 0.), 0., 1.);
+    vec3 E = SKYAMB * (.6 + .5 * nw.y) * ao;
+    vec3 pool = locToWorldP(vec3(0., 0., 7.));
+    vec3 dp = pool - pw; float dd = length(dp);
+    vec3 poolE = HLCOL * 3.2 / (1. + dd * dd * .035);
+    E += poolE * max(dot(nw, dp / dd) * .8 + .2, 0.) * ao;
+    E += HLCOL * .03 * (.4 + .6 * max(dot(nw, gFW), 0.));                     // glow of lit spindrift
+    vec3 tc = (gTL0 + gTL1) * .5 - gFW * .6; vec3 dtl = tc - pw;            // tail light spill on the rear
+    E += TLCOL * .9 * max(dot(nw, normalize(dtl)), 0.) / (1. + dot(dtl, dtl) * 3.);
+    col = alb * E + emis;
+    vec3 R = reflect(rd, nw);
+    float fres = .04 + .96 * pow(1. - max(dot(nw, V), 0.), 5.);
+    vec3 env = skyCol(R, t, gust) * 2. + poolE * pow(max(dot(R, dp / dd), 0.), rough) * .6;
+    col += env * fres * spec * ao;
+    if (glass){
+      // dark glass reflecting the sky, and the dome-lit cab behind it with the crew in silhouette
+      vec3 inside = vec3(0.);
+      vec3 ip = pl; vec3 id = rdl;
+      vec3 dome = vec3(0., 2.55, .3);
+      float hitS = 1e5;
+      for (int k = 0; k < 2; k++){
+        float sx = k == 0 ? .44 : -.44;
+        float th = sphHit(ip, id, vec3(sx, 2.23, .72), .13);
+        if (th > 0.) hitS = min(hitS, th);
+        float tb = sphHit(ip, id, vec3(sx, 1.88, .78), .26);
+        if (tb > 0.) hitS = min(hitS, tb);
+      }
+      vec3 glow = vec3(1., .62, .3) * .09;
+      float edge = 1.;
+      if (hitS < 1e4){
+        vec3 hp = ip + id * hitS;
+        inside = vec3(.004, .003, .002) + glow * .25 * smoothstep(.3, 0., length(hp - dome) - .5);
+      } else {
+        vec3 far = ip + id * 1.2;
+        inside = glow * (1.2 / (1. + dot(far - dome, far - dome) * 1.5)) + vec3(.01, .006, .003);
+      }
+      float gf = .05 + .95 * pow(1. - max(dot(nw, V), 0.), 5.);
+      col = inside * (1. - gf) + (skyCol(R, t, gust) * 3. + poolE * .15 * pow(max(dot(R, dp / dd), 0.), 8.)) * gf;
+      col += vec3(.02, .025, .03) * smoothstep(.55, .75, noise3(pl * 18.)) * .3;   // frost on the glass
+    }
+    // blowing snow in front of it
+    float T = exp(-sig * tv);
+    col = col * T + fogC * (1. - T);
+  } else if (rd.y < 0.){
+    // ---------------- plateau snow
+    vec3 p = ro + rd * tGround;
+    float tg = tGround;
+    vec2 sp = p.xz * vec2(.35, 1.1);
+    float h0 = fbm3o(sp * .5);
+    vec2 e = vec2(.08, 0.);
+    float hx = fbm3o((sp + e.xy) * .5), hz = fbm3o((sp + e.yx) * .5);
+    float bump = .9 * smoothstep(60., 3., tg);
+    vec3 n = normalize(vec3(-(hx - h0) * 7. * bump, 1., -(hz - h0) * 7. * bump));
+    // fresh track ruts behind the vehicle
+    vec3 pl = toLoc(p - gV);
+    float behind = step(pl.z, -2.2) * exp(max(-pl.z - 2.2, 0.) * -.03);
+    float rut = smoothstep(.36, .18, abs(abs(pl.x) - 1.08)) * behind;
+    float rutEdge = smoothstep(.1, .0, abs(abs(abs(pl.x) - 1.08) - .36)) * behind;
+    n = normalize(n + vec3(0., 0., 0.) + toWld(vec3(sign(pl.x) * sign(abs(pl.x) - 1.08) * .5 * rutEdge, 0., 0.)));
+    vec3 alb = vec3(.78, .83, .9) * (.9 + .15 * h0);
+    // contact shadow under the vehicle
+    float foot = sdBox2(pl.xz, vec2(1.35, 2.6));
+    float occ = mix(.25, 1., smoothstep(-.3, 1.2, foot));
+    vec3 E = SKYAMB * (1.1 + .9 * smoothstep(.35, .7, h0)) * occ;
+    E += lampsAt(p, n, rd) * (1. - .5 * rut);
+    col = alb * E * (1. - .35 * rut);
+    // glitter in the beams
+    float g = hash21(floor(p.xz * 40.));
+    col += step(.992, g) * lampsAt(p + vec3(0., .05, 0.), vec3(0., 1., 0.), rd) * 1.5 * smoothstep(25., 3., tg);
+    // low drifting snow snaking along the ground
+    float drift = fbm3o(vec2(p.x * .12 + t * 1.6, p.z * .5) + vec2(0., t * .3));
+    drift = smoothstep(.35, .8, drift) * (.6 + .6 * gust);
+    vec3 dl = SKYAMB * 1.8 + lampsAt(p + vec3(0., .25, 0.), vec3(0.), rd) * .5;
+    col = mix(col, dl, drift * .55);
+    float T = exp(-sig * tg);
+    col = col * T + mix(fogC, skyCol(vec3(rd.x, .001, rd.z), t, gust), .6) * (1. - T);
   } else {
-    col = skyCol;
+    col = skyCol(rd, t, gust);
   }
 
-  // distant/approaching headlights: two DISTINCT points (not one merged disc) plus a soft
-  // shared halo and a light-bar smear between them, visible well before the geometry resolves.
+  // ---------------- headlight cones through the blowing snow (few dithered samples)
   {
-    vec3 toL = lightL - ro, toR = lightR - ro;
-    float dL = length(toL), dR = length(toR);
-    float aL = dot(rd, toL / dL), aR = dot(rd, toR / dR);
-    float angScale = clamp(mix(0.99998, 0.9990, clamp(dL / 60.0, 0., 1.)), 0.9990, 0.99998);
-    float ptL = smoothstep(angScale, 1.0, aL);
-    float ptR = smoothstep(angScale, 1.0, aR);
-    float haloL = smoothstep(angScale - 0.0009, angScale, aL) * 0.22;
-    float haloR = smoothstep(angScale - 0.0009, angScale, aR) * 0.22;
-    vec3 barDir = normalize(lightR - lightL);
-    vec3 toBar = ro + rd * dot(lightL - ro, rd) - lightL;
-    float alongBar = clamp(dot(toBar, barDir) / length(lightR - lightL), 0.0, 1.0);
-    vec3 nearestBar = lightL + barDir * alongBar * length(lightR - lightL);
-    float barAng = dot(rd, normalize(nearestBar - ro));
-    float bar = smoothstep(0.9985, 0.9999, barAng) * 0.35;
-    float distFactor = clamp(1.0 - dL / 130.0, .12, 1.0);
-    col += vec3(1.0, .8, .5) * ((ptL + ptR) * 2.6 + haloL + haloR + bar) * (0.35 + distFactor * 0.75);
-  }
-
-  // volumetric headlight shafts through the blizzard (few-sample fake).
-  // Gate by a cheap angle/distance test first: this loop is the single most expensive
-  // part of the shader, and only matters for pixels actually looking toward the beams.
-  vec3 toVeh = vp - ro; float distVeh = length(toVeh);
-  bool nearBeam = distVeh < 90.0 && dot(rd, toVeh / max(distVeh, 0.001)) > 0.8;
-  if (nearBeam) {
-    vec3 shaft = vec3(0.);
-    float maxD = min(dist, 30.0);
-    const int NS = 3;
-    float stepL = maxD / float(NS);
-    float o = hash21(fc);
-    for (int i = 0; i < NS; i++){
-      float sd = (float(i) + o) * stepL;
-      vec3 sp = ro + rd * sd;
-      for (int li = 0; li < 2; li++){
-        vec3 lp = li == 0 ? lightL : lightR;
-        vec3 Ld = lp - sp; float ldist = length(Ld); Ld /= ldist;
-        float cone = spotLight(sp, lp, aimDir, .82, .95);
-        float ph = hgPhase(dot(rd, -Ld), .55);
-        float dens = 0.5 + 0.8 * fbm3lo(sp * .5 + t * vec3(WIND.x, 0., WIND.y) * WSPD);
-        dens *= (1.0 + gust * 1.2);
-        shaft += vec3(1.0, .8, .5) * cone * ph * dens * stepL * 0.05;
+    vec3 cc = locToWorldP(vec3(0., 1.4, 12.));
+    float r = 16.;
+    vec3 oc = ro - cc; float b = dot(oc, rd); float h = b * b - dot(oc, oc) + r * r;
+    if (h > 0.){
+      h = sqrt(h);
+      float t0 = max(-b - h, 0.), t1 = min(-b + h, tHit);
+      if (t1 > t0){
+        const int NS = 8;
+        float dt = (t1 - t0) / float(NS);
+        vec3 acc = vec3(0.);
+        for (int i = 0; i < NS; i++){
+          float ts = t0 + (float(i) + dither) * dt;
+          vec3 x = ro + rd * ts;
+          float dens = .55 + .9 * noise3(vec3(x.x * .35 + t * 3.5, x.y * .9, x.z * .35 + t * .6));
+          dens *= 1. + 1.2 * exp(-x.y * 1.2);            // denser drift close to the ground
+          acc += lampsAt(x, vec3(0.), rd) * dens * exp(-sig * ts) * dt;
+        }
+        col += acc * (.018 + .02 * gust);
       }
     }
-    col += shaft;
   }
 
-  // ground drift: streaming low band of blowing snow, textured & animated along the wind so it
-  // reads as motion across the surface rather than a flat fog blend. Only meaningful where we
-  // actually hit ground/vehicle near the surface — gating on that keeps the sky from getting an
-  // arbitrary fog wash that would otherwise cut a hard line right at the horizon.
-  if (hitTerrain || hitVehicle){
-    vec3 samp = ro + rd * min(dist, 22.0);
-    float heightW = smoothstep(2.2, -0.15, samp.y);
-    vec2 w = vec2(dot(samp.xz, WIND), dot(samp.xz, vec2(-WIND.y, WIND.x)));
-    vec2 streamUV = vec2(w.x * 0.3 - t * WSPD * 3.0, w.y * 1.6);  // compressed along-wind = streaky
-    float n = fbm2(streamUV);
-    float drift = heightW * (0.28 + 0.55 * n) * (0.55 + gust * 0.8);
-    float distW = 1.0 - exp(-min(dist, 22.0) * 0.04);
-    col = mix(col, vec3(.05, .06, .08), clamp(drift * distW, 0., 0.4));
-  }
-
-  // general atmospheric fog — same dark blue-grey as the sky base, so the horizon dissolves
-  // into the blizzard instead of cutting hard against it.
-  float fogAmt = 1.0 - exp(-dist * 0.07 * (0.6 + gust * 0.5));
-  vec3 fogCol = mix(vec3(.008, .011, .017), vec3(.02, .024, .032), skyTexture(normalize(vec3(rd.x, 0.05, rd.z)), t) * 0.5 + 0.25);
-  col = mix(col, fogCol, clamp(fogAmt, 0., 0.94));
-
-  // snow spray kicked up around the tracks as the Sno-Cat passes close
+  // ---------------- wind-driven snow: world-anchored layers at increasing depth
   {
-    float passWindow = smoothstep(7.0, 8.6, t) * smoothstep(11.8, 10.2, t);
-    if (passWindow > 0.001){
-      vec3 toV = vp - ro;
-      float ang = dot(rd, normalize(toV));
-      float sprayMask = smoothstep(0.965, 0.995, ang) * passWindow;
-      float n = fbm2(uv2 * 6.0 + t * vec2(3.0, 0.5));
-      col += vec3(.5, .5, .55) * sprayMask * n * 0.5;
+    float rh = length(rd.xz);
+    float az = atan(rd.x, rd.z);
+    float wind = 12. + 7. * gust;
+    for (int i = 0; i < 6; i++){
+      float fi = float(i);
+      float d = .8 * pow(1.78, fi);
+      float tl = d / rh;
+      if (tl > tHit) break;
+      vec3 P = ro + rd * tl;
+      float cs = .075 * pow(d, .6);
+      float L = wind * (1. / 48.) * .55;               // half streak length (shutter)
+      vec2 cell = vec2(2.4 * L + 3. * cs, cs);
+      vec2 c = vec2(az * d - t * wind, P.y + t * 1.3 + fi * 3.7);
+      c.y += .15 * sin(c.x * .6 + fi * 2.);           // eddies
+      vec2 g = c / cell; vec2 id = floor(g); vec2 f = fract(g) - .5;
+      float hh = hash21(id + fi * 37.1);
+      float dens = (.28 + .4 * gust) * (1. + 1.4 * exp(-P.y * 1.5));
+      if (hh < dens){
+        vec2 o = (hash22(id + fi * 11.3) - .5) * vec2(cell.x - 2. * L, cell.y * .6);
+        vec2 dd = f * cell - o;
+        float px = tl / (gFocal * iResolution.y);      // one pixel in meters at this depth
+        float rr = .004 + .03 * smoothstep(1.6, .4, d);  // defocus near the lens
+        float sd = length(vec2(max(abs(dd.x) - L, 0.), dd.y));
+        float a = smoothstep(rr + 1.5 * px, rr * .3, sd) * (rr + px) / (rr + px + L * .5);
+        vec3 lit = SKYAMB * 2.5 + lampsAt(P, vec3(0.), rd) * 1.3;
+        col += lit * a * (.9 + 1.6 * hh) * (d < 1.2 ? .45 : 1.);
+      }
     }
   }
 
-  // screen-space wind-blown snow: layered, streaked, brighter when roughly toward the headlights
-  float towardLight = smoothstep(.4, .95, max(dot(normalize(vp - ro), rd), 0.0));
-  vec2 streaks = snowStreaks(uv2, t, gust);
-  col += streaks.y * mix(vec3(.16, .18, .24), vec3(1.0, .85, .6), towardLight * 0.85) * 0.6;
-
+  // ---------------- lamp glare (sprites for lamps too small to resolve + blooming halos)
+  {
+    vec3 V = ro;
+    for (int k = 0; k < 8; k++){
+      vec3 lp; vec3 ld; vec3 lc; float I;
+      if (k < 2){ lp = k == 0 ? gHL0 : gHL1; ld = gHD; lc = HLCOL; I = 1.; }
+      else if (k < 6){ float xo = k == 2 ? .7 : (k == 3 ? .28 : (k == 4 ? -.28 : -.7)); lp = locToWorldP(vec3(xo, 2.91, 1.21)); ld = gRD; lc = RLCOL; I = .6; }
+      else { lp = k == 6 ? gTL0 : gTL1; ld = -gFW; lc = TLCOL; I = .35; }
+      vec3 sp = proj(lp);
+      if (sp.z < .3) continue;
+      vec3 toC = normalize(V - lp);
+      float face = dot(ld, toC);
+      float beam = smoothstep(.55, .98, face);
+      if (k >= 6) beam = smoothstep(.2, .9, face);
+      if (beam <= 0.) continue;
+      float occl = (tv > 0. && tv < sp.z - .25) ? .15 : 1.;
+      vec2 dv = uv - sp.xy;
+      float r = length(dv);
+      float T = exp(-sig * sp.z * .7);
+      float px = 1. / iResolution.y;
+      float core = exp(-r * r / (px * px * 2.2)) * 3.5 * smoothstep(12., 40., sp.z);
+      float halo = .045 / (1. + pow(r * 38., 2.)) + .012 * exp(-r * 7.);
+      float streak = exp(-abs(dv.y) * 900.) * exp(-abs(dv.x) * 9.) * .25;
+      float spikes = exp(-abs(dv.x + dv.y) * 1400.) * exp(-r * 18.) * .2 + exp(-abs(dv.x - dv.y) * 1400.) * exp(-r * 18.) * .2;
+      col += lc * I * beam * T * (core * occl + (halo + streak + spikes) * (.5 + .5 * occl)) * (k < 6 ? (1. + 10. / (1. + sp.z * .6)) : 1.);
+    }
+  }
   return col;
 }

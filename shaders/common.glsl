@@ -227,16 +227,17 @@ vec2 sdMonster(vec3 p, float t, float seed, float run){
   float jawDrop = .07 + .07 * run + .03 * spasm;
   float skull = sdEllipsoid(hq - vec3(0., .025, -.015), vec3(.072, .095, .09));
   // brow ridge, cheekbones, sunken temples, narrow chin
-  skull = smin(skull, sdCapsule(hq, vec3(-.045, .04, .07), vec3(.045, .04, .07), .014), .015);
-  skull = smin(skull, sdEllipsoid(vec3(abs(hq.x) - .045, hq.y + .005, hq.z - .045), vec3(.02, .014, .03)), .015);
+  skull = smin(skull, sdCapsule(hq, vec3(-.04, .042, .072), vec3(.04, .042, .072), .008), .02);
+  skull = smin(skull, sdEllipsoid(vec3(abs(hq.x) - .046, hq.y + .008, hq.z - .045), vec3(.013, .009, .022)), .012);
   skull = smax(skull, -sdSphere(vec3(abs(hq.x) - .085, hq.y - .03, hq.z - .03), .03), .02);
   vec3 jq = hq - vec3(0., -.06 - jawDrop * .55, .035);
   float jaw = sdEllipsoid(jq, vec3(.048, .028 + jawDrop * .5, .052));
   float mouth = sdEllipsoid(hq - vec3(0., -.062 - jawDrop * .45, .07), vec3(.036, .018 + jawDrop * .48, .05));
   float head = smin(skull, jaw, .02);
   head = smax(head, -mouth, .005);
-  vec3 eq = vec3(abs(hq.x) - .03, hq.y - .018, hq.z - .07);
-  head = smax(head, -sdSphere(eq, .019), .006);
+  vec3 eq = vec3(abs(hq.x) - .031, hq.y - .016, hq.z - .066);
+  head = smax(head, -sdSphere(eq, .024), .005);
+  head = smax(head, -sdEllipsoid(hq - vec3(0., -.018, .088), vec3(.011, .017, .02)), .004);   // nasal cavity
   // cheek tears
   head = smax(head, -sdEllipsoid(vec3(abs(hq.x) - .042, hq.y + .045, hq.z - .05), vec3(.008, .04, .03)), .004);
   float eyes = sdSphere(eq + vec3(0., 0., .012), .0045);   // tiny milky pupils deep in the sockets
@@ -319,13 +320,14 @@ vec2 sdMonster(vec3 p, float t, float seed, float run){
 
 // Shading helper for monster materials.
 vec3 monsterAlbedo(float m, vec3 p){
-  if (m == M_SKIN)  return skinColor(p) * vec3(.5, .52, .58);
+  if (m == M_SKIN)  return skinColor(p) * vec3(.36, .37, .37);
   if (m >= M_CLOTH && m < M_GORE){
     float dirt = smoothstep(.4, .75, fbm3lo(p * 5.));
-    float blood = smoothstep(.55, .72, noise3(p * 3. + 9.));
-    vec3 base = m > M_CLOTH ? vec3(.07, .075, .06) : vec3(.5, .5, .46);  // telogreika vs lab coat
-    base = mix(base, vec3(.12, .09, .07), dirt * .7);
-    return mix(base, vec3(.16, .015, .015), blood);
+    float blood = smoothstep(.48, .66, noise3(p * 3. + 9.)) + .6 * smoothstep(.62, .7, noise3(p * 11. + 2.));
+    vec3 base = m > M_CLOTH ? vec3(.07, .075, .06) : vec3(.36, .35, .31);  // telogreika vs lab coat
+    base = mix(base, vec3(.12, .09, .07), dirt * .8);
+    base *= .75 + .25 * noise3(p * 40.);                                  // fabric grime
+    return mix(base, vec3(.12, .012, .012), clamp(blood, 0., 1.));
   }
   if (m == M_GORE)  return goreColor(p);
   if (m == M_BONE)  return vec3(.55, .5, .4);

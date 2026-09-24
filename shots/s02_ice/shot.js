@@ -1,21 +1,33 @@
+// s02_ice (12 s) — blizzard on the polar plateau; a Tucker Sno-Cat emerges from the spindrift and
+// passes close by the low camera at ~9.8 s. Camera pans to follow and lets it go.
+
+// wind gusts (shared with the shader via uP[0] so snow density, fog and camera shake agree)
+function gust(t) {
+  const g = (c, w) => Math.exp(-(((t - c) / w) ** 2));
+  return Math.min(1, 0.15 + 0.85 * g(2.4, 0.9) + 0.7 * g(6.1, 1.0) + 0.9 * g(9.9, 0.7));
+}
+
 export default {
   duration: 12,
   fps: 24,
-  sceneScale: 0.38,
+  sceneScale: 0.66,
+  params(t) { return [gust(t)]; },
   post(t) {
-    const gust = Math.exp(-(((t - 2.2) / 0.9) ** 2)) + Math.exp(-(((t - 6.0) / 1.0) ** 2)) + Math.exp(-(((t - 9.7) / 0.8) ** 2));
+    const gu = gust(t);
+    // the pass-by rattles the camera
+    const pass = Math.exp(-(((t - 9.8) / 0.6) ** 2));
     return {
       bar: 0.12,
-      grain: 0.07,
-      aberr: 0.0018,
+      grain: 0.065,
+      aberr: 0.0016,
       vignette: 1.05,
-      bloom: 0.4,
-      exposure: 1.0,
-      contrast: 1.1,
-      sat: 0.72,
-      temp: -0.18,
-      shake: 0.15 + Math.min(gust, 1) * 0.35,
-      fade: t < 0.4 ? 1 - t / 0.4 : (t > 11.6 ? (t - 11.6) / 0.4 : 0),
+      bloom: 0.45,
+      exposure: 1.15,
+      contrast: 1.08,
+      sat: 0.9,
+      temp: -0.12,
+      shake: 0.05 + gu * 0.12 + pass * 0.25,
+      fade: t < 0.5 ? 1 - t / 0.5 : (t > 11.5 ? (t - 11.5) / 0.5 : 0),
     };
   },
   overlay(ctx, t, W, H) {

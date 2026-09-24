@@ -2,25 +2,30 @@
 export default {
   duration: 13,
   fps: 24,
-  sceneScale: 0.75,
+  sceneScale: 0.7,
+
+  // uP[0] = 1 after the hard cut: skip the scene entirely
+  params(t) { return [t >= 11.2 ? 1 : 0]; },
 
   post(t) {
-    const burstFlash = t >= 10.2 && t < 10.45 ? (1 - (t - 10.2) / 0.25) : 0;
+    const B = 10.2;
+    const b = t - B;
+    const burst = t >= B && t < 11.2;
     return {
       bar: 0.12,
-      grain: 0.07,
-      aberr: 0.0016,
-      vignette: 1.1,
-      bloom: 0.32,
-      exposure: t >= 10.2 && t < 10.6 ? 1.5 : 1.0,
-      temp: -0.25,
-      contrast: 1.08,
-      sat: t >= 10.2 && t < 10.6 ? 1.15 : 0.92,
-      shake: t >= 10.0 && t < 11.2 ? (t < 10.2 ? 1.2 : 3.5) : 0.15,
-      flash: burstFlash * 0.8,
-      flashColor: [0.75, 1.0, 0.7],
+      grain: 0.075,
+      aberr: burst ? 0.004 : 0.0017,
+      vignette: 1.15,
+      bloom: burst ? 0.5 : 0.4,
+      exposure: 1.0,
+      temp: -0.15,
+      contrast: 1.1,
+      sat: 0.95,
+      shake: burst ? 2.2 * Math.exp(-b * 2.5) + 0.4 : (t > 8.9 && t < B ? 0.25 : 0.12),
+      flash: burst ? 0.35 * Math.exp(-b * 14) : 0,
+      flashColor: [0.55, 1.0, 0.6],
       fade: t >= 11.2 ? 1 : 0,
-      scan: 0,
+      lift: [0, 0.01, 0.005],
     };
   },
 
@@ -90,90 +95,121 @@ export default {
   ],
 
   overlay(ctx, t, W, H) {
+    if (t >= 11.2) return;
     const s = W / 1280;
-    // document close-up, ~3-6.2s
-    const on = t > 2.8 && t < 6.4;
-    if (on) {
-      const inK = Math.min(1, (t - 2.8) / 0.5);
-      const outK = Math.min(1, Math.max(0, (t - 5.9) / 0.5));
-      const a = Math.min(inK, 1 - outK);
-      if (a > 0.01) {
-        ctx.save();
-        ctx.globalAlpha = a;
-        const w = 560 * s, h = 440 * s;
-        const x = W / 2 - w / 2, y = H / 2 - h / 2;
-        ctx.fillStyle = '#d8d0b6';
-        ctx.fillRect(x, y, w, h);
-        ctx.strokeStyle = 'rgba(0,0,0,.4)'; ctx.lineWidth = 2 * s; ctx.strokeRect(x, y, w, h);
-        // grime
-        for (let i = 0; i < 900; i++) {
-          ctx.fillStyle = `rgba(70,60,40,${Math.random() * 0.06})`;
-          ctx.fillRect(x + Math.random() * w, y + Math.random() * h, 2, 2);
-        }
-        // top secret stamp
-        ctx.save();
-        ctx.translate(x + w * 0.74, y + h * 0.13);
-        ctx.rotate(-0.2);
-        ctx.strokeStyle = '#8a1c1c'; ctx.lineWidth = 2.5 * s;
-        ctx.strokeRect(-78 * s, -18 * s, 156 * s, 36 * s);
-        ctx.fillStyle = 'rgba(138,28,28,0.9)';
-        ctx.font = `bold ${16 * s}px "Oswald"`;
-        ctx.textAlign = 'center';
-        ctx.fillText('СОВЕРШЕННО', 0, -2 * s);
-        ctx.fillText('СЕКРЕТНО', 0, 14 * s);
-        ctx.restore();
-        ctx.textAlign = 'left';
-
-        ctx.fillStyle = '#1a1a16';
-        ctx.font = `${19 * s}px "PT Mono"`;
-        ctx.fillText('ОБРАЗЕЦ 9-А. ПОДЛЁДНОЕ ОЗЕРО.', x + 22 * s, y + 42 * s);
-        ctx.fillText('ГЛУБИНА 3700 М', x + 22 * s, y + 66 * s);
-        ctx.font = `italic ${13 * s}px "PT Mono"`;
-        ctx.fillStyle = '#4a4436';
-        ctx.fillText('Sample 9-A. Subglacial lake.', x + 22 * s, y + 88 * s);
-        ctx.fillText('Depth 3,700 m.', x + 22 * s, y + 105 * s);
-
-        // grainy "photo" of the drill rig on the ice
-        const px = x + 22 * s, py = y + 122 * s, pw = w - 44 * s, ph = h - 150 * s;
-        const grad = ctx.createLinearGradient(px, py, px, py + ph);
-        grad.addColorStop(0, '#0a1016'); grad.addColorStop(0.55, '#131b22'); grad.addColorStop(0.56, '#1c2226'); grad.addColorStop(1, '#2a2e30');
-        ctx.fillStyle = grad; ctx.fillRect(px, py, pw, ph);
-        ctx.save();
-        ctx.beginPath(); ctx.rect(px, py, pw, ph); ctx.clip();
-        const gx = px + pw * 0.52, gy = py + ph * 0.56, gh = ph * 0.5;
-        ctx.strokeStyle = 'rgba(170,185,195,.65)'; ctx.lineWidth = 1.6 * s;
-        // derrick lattice tower
-        ctx.beginPath();
-        ctx.moveTo(gx - pw * 0.09, gy); ctx.lineTo(gx, gy - gh); ctx.lineTo(gx + pw * 0.09, gy); ctx.closePath(); ctx.stroke();
-        for (let i = 1; i < 6; i++) {
-          const f = i / 6, yy = gy - gh * f, ww = pw * 0.09 * (1 - f);
-          ctx.beginPath(); ctx.moveTo(gx - ww, yy); ctx.lineTo(gx + ww, yy); ctx.stroke();
-          ctx.beginPath(); ctx.moveTo(gx - pw * 0.09 * (1 - (f - 1 / 6)), gy - gh * (f - 1 / 6)); ctx.lineTo(gx + ww, yy); ctx.stroke();
-        }
-        // work-light glow atop the derrick
-        const lg = ctx.createRadialGradient(gx, gy - gh, 1, gx, gy - gh, pw * 0.12);
-        lg.addColorStop(0, 'rgba(255,210,140,.8)'); lg.addColorStop(1, 'rgba(255,210,140,0)');
-        ctx.fillStyle = lg; ctx.beginPath(); ctx.arc(gx, gy - gh, pw * 0.12, 0, Math.PI * 2); ctx.fill();
-        // horizon + snow drift texture
-        ctx.strokeStyle = 'rgba(150,165,175,.4)'; ctx.lineWidth = 1 * s;
-        for (let i = 0; i < 5; i++) {
-          ctx.beginPath(); ctx.moveTo(px, py + ph * (0.62 + i * 0.03) + Math.sin(i) * 4);
-          ctx.lineTo(px + pw, py + ph * (0.60 + i * 0.03) + Math.cos(i) * 4); ctx.stroke();
-        }
-        for (let i = 0; i < 2200; i++) {
-          const b = Math.random() * 0.5 + Math.random() * 0.15;
-          ctx.fillStyle = `rgba(${180 * b},${190 * b},${195 * b},${Math.random() * 0.45})`;
-          ctx.fillRect(px + Math.random() * pw, py + Math.random() * ph, 1.3, 1.3);
-        }
-        ctx.restore();
-        ctx.font = `${11 * s}px "PT Mono"`;
-        ctx.fillStyle = '#3a352a';
-        ctx.fillText('БУРОВАЯ ПЛОЩАДКА — Т9', px, py + ph + 16 * s);
-
-        ctx.restore();
-      }
+    // document insert, ~3.0-6.2 s, kept inside the letterbox
+    const t0 = 2.9, t1 = 6.3;
+    if (t < t0 || t > t1) return;
+    const a = Math.min(1, (t - t0) / 0.45, (t1 - t) / 0.45);
+    if (a <= 0.01) return;
+    const bar = 0.12 * H;
+    ctx.save();
+    ctx.beginPath(); ctx.rect(0, bar, W, H - 2 * bar); ctx.clip();
+    ctx.globalAlpha = a;
+    ctx.fillStyle = 'rgba(0,0,0,0.62)';
+    ctx.fillRect(0, bar, W, H - 2 * bar);
+    // slow drift of the page under the torch
+    const k = (t - t0) / (t1 - t0);
+    const w = 520 * s, h = 470 * s;
+    ctx.translate(W / 2 + (8 - 16 * k) * s, H / 2 + (12 - 10 * k) * s);
+    ctx.rotate(-0.035 + 0.012 * k);
+    ctx.scale(1 + 0.04 * k, 1 + 0.04 * k);
+    const x = -w / 2, y = -h / 2;
+    ctx.fillStyle = '#cfc6a8';
+    ctx.fillRect(x, y, w, h);
+    // grime, fold, coffee ring
+    let seed = 7;
+    const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+    for (let i = 0; i < 1100; i++) {
+      ctx.fillStyle = `rgba(70,60,40,${rnd() * 0.07})`;
+      ctx.fillRect(x + rnd() * w, y + rnd() * h, 2 * s, 2 * s);
     }
-
-    // hard cut hold-black title beat isn't needed here; the fade handles it.
+    ctx.strokeStyle = 'rgba(90,70,40,0.18)'; ctx.lineWidth = 6 * s;
+    ctx.beginPath(); ctx.arc(x + w * 0.82, y + h * 0.86, 34 * s, 0.3, 5.6); ctx.stroke();
+    ctx.fillStyle = 'rgba(0,0,0,0.06)'; ctx.fillRect(x, y + h * 0.5, w, 2 * s);
+    ctx.fillStyle = '#1a1a16';
+    ctx.font = `${11 * s}px "PT Mono"`;
+    ctx.fillText('МИНИСТЕРСТВО СРЕДНЕГО МАШИНОСТРОЕНИЯ СССР', x + 22 * s, y + 24 * s);
+    ctx.fillText('ОБЪЕКТ 9 · ЛАБОРАТОРИЯ 3 · ПРОТОКОЛ № 41', x + 22 * s, y + 38 * s);
+    ctx.fillRect(x + 22 * s, y + 46 * s, w - 44 * s, 1.2 * s);
+    ctx.font = `bold ${21 * s}px "PT Mono"`;
+    ctx.fillText('ОБРАЗЕЦ 9-А. ПОДЛЁДНОЕ ОЗЕРО.', x + 22 * s, y + 76 * s);
+    ctx.fillText('ГЛУБИНА 3700 М', x + 22 * s, y + 101 * s);
+    ctx.font = `italic ${13 * s}px "PT Mono"`;
+    ctx.fillStyle = '#4a4436';
+    ctx.fillText('Sample 9-A. Subglacial lake. Depth 3,700 m.', x + 22 * s, y + 122 * s);
+    // stamp
+    ctx.save();
+    ctx.translate(x + w * 0.76, y + h * 0.2);
+    ctx.rotate(-0.22);
+    ctx.strokeStyle = 'rgba(138,28,28,0.85)'; ctx.lineWidth = 2.5 * s;
+    ctx.strokeRect(-80 * s, -20 * s, 160 * s, 40 * s);
+    ctx.fillStyle = 'rgba(138,28,28,0.85)';
+    ctx.font = `bold ${16 * s}px "Oswald"`;
+    ctx.textAlign = 'center';
+    ctx.fillText('СОВЕРШЕННО', 0, -2 * s);
+    ctx.fillText('СЕКРЕТНО', 0, 15 * s);
+    ctx.restore();
+    // photo: a figure in a specimen tank, paper-clipped
+    const px = x + 22 * s, py = y + 140 * s, pw = 190 * s, ph = 230 * s;
+    ctx.save();
+    ctx.translate(px + pw / 2, py + ph / 2); ctx.rotate(0.03); ctx.translate(-pw / 2, -ph / 2);
+    ctx.fillStyle = '#e9e4d6'; ctx.fillRect(-6 * s, -6 * s, pw + 12 * s, ph + 12 * s);
+    ctx.fillStyle = '#0b0d0c'; ctx.fillRect(0, 0, pw, ph);
+    const g = ctx.createRadialGradient(pw / 2, ph * 0.8, 4 * s, pw / 2, ph * 0.6, ph * 0.6);
+    g.addColorStop(0, 'rgba(210,215,200,0.9)'); g.addColorStop(0.5, 'rgba(90,95,88,0.6)'); g.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = g; ctx.fillRect(pw * 0.2, ph * 0.08, pw * 0.6, ph * 0.84);
+    ctx.strokeStyle = 'rgba(220,225,215,0.5)'; ctx.lineWidth = 1.5 * s;
+    ctx.strokeRect(pw * 0.2, ph * 0.08, pw * 0.6, ph * 0.84);
+    // hunched silhouette
+    ctx.fillStyle = '#060706';
+    ctx.beginPath();
+    ctx.ellipse(pw * 0.53, ph * 0.3, 11 * s, 14 * s, 0.4, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(pw * 0.44, ph * 0.36); ctx.quadraticCurveTo(pw * 0.36, ph * 0.55, pw * 0.44, ph * 0.72);
+    ctx.lineTo(pw * 0.40, ph * 0.9); ctx.lineTo(pw * 0.47, ph * 0.9); ctx.lineTo(pw * 0.52, ph * 0.72);
+    ctx.lineTo(pw * 0.58, ph * 0.9); ctx.lineTo(pw * 0.64, ph * 0.9); ctx.quadraticCurveTo(pw * 0.66, ph * 0.5, pw * 0.6, ph * 0.38);
+    ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = '#060706'; ctx.lineWidth = 4 * s;
+    ctx.beginPath(); ctx.moveTo(pw * 0.46, ph * 0.4); ctx.quadraticCurveTo(pw * 0.34, ph * 0.55, pw * 0.36, ph * 0.72); ctx.stroke();
+    for (let i = 0; i < 900; i++) {
+      const b = rnd();
+      ctx.fillStyle = `rgba(${200 * b},${205 * b},${195 * b},${rnd() * 0.25})`;
+      ctx.fillRect(rnd() * pw, rnd() * ph, 1.3 * s, 1.3 * s);
+    }
+    ctx.restore();
+    ctx.fillStyle = '#777'; ctx.fillRect(px + 30 * s, py - 12 * s, 6 * s, 30 * s);   // paper clip
+    ctx.fillStyle = '#3a352a';
+    ctx.font = `${10 * s}px "PT Mono"`;
+    ctx.fillText('РЕЗЕРВУАР 4 · 14.06.89', px, py + ph + 22 * s);
+    // typed report lines
+    ctx.fillStyle = '#1e1c16';
+    ctx.font = `${12.5 * s}px "PT Mono"`;
+    const lines = [
+      'Извлечён с глубины 3700 м',
+      'из подлёдного озера (скв. 9).',
+      'Организм жизнеспособен при',
+      '+2 °C. Проникает в ткани',
+      'носителя в течение 6 часов.',
+      'Носители сохраняют',
+      'двигательную активность',
+      'после клинической смерти.',
+      '',
+      'Реагирует на свет.',
+      'НЕ ОТКРЫВАТЬ РЕЗЕРВУАРЫ.',
+    ];
+    let ly = py + 12 * s;
+    for (const l of lines) { ctx.fillText(l, px + pw + 20 * s, ly); ly += 19 * s; }
+    // redaction bar and handwritten note
+    ctx.fillStyle = '#111'; ctx.fillRect(px + pw + 20 * s, py + 44 * s, 150 * s, 13 * s);
+    ctx.fillStyle = 'rgba(40,40,110,0.8)';
+    ctx.font = `italic ${15 * s}px "Special Elite"`;
+    ctx.fillText('он смотрит на нас', px + pw + 24 * s, y + h - 36 * s);
+    // cold torch falloff across the page
+    const tg = ctx.createRadialGradient(-40 * s, -30 * s, 30 * s, 0, 0, w * 0.8);
+    tg.addColorStop(0, 'rgba(0,0,0,0)'); tg.addColorStop(1, 'rgba(0,4,10,0.75)');
+    ctx.fillStyle = tg; ctx.fillRect(x, y, w, h);
+    ctx.fillStyle = 'rgba(120,150,200,0.06)'; ctx.fillRect(x, y, w, h);
+    ctx.restore();
   },
 };

@@ -39,12 +39,27 @@ vec2 sdKS23Detail(vec3 p, float pump){
   r = opU(r, vec2(sdBox(p - vec3(0., .062, -.115), vec3(.0045, .007, .012)), M_GUNMETAL)); // rear sight
   r = opU(r, vec2(max(sdTorus((p - vec3(0., -.058, -.03)).xzy, vec2(.028, .0045)), -(p.y + .045)), M_GUNMETAL));
   r = opU(r, vec2(sdCapsule(p, vec3(0., -.04, -.025), vec3(0., -.068, -.035), .003), M_GUNMETAL));
-  vec3 sq = p - vec3(0., -.03, -.1);
-  sq.yz *= rot2(-.18);
-  float stock = sdRoundBox(sq - vec3(0., -.02, -.22), vec3(.02 + .008 * clamp(-sq.z * 2., 0., 1.), .035 + .045 * clamp(-sq.z * 2.5, 0., 1.), .22), .015);
-  float grip = sdRoundBox(rotX(p - vec3(0., -.08, -.1), .5), vec3(.018, .05, .025), .012);
-  r = opU(r, vec2(smin(stock, grip, .03), M_WOOD));
-  r = opU(r, vec2(sdRoundBox(sq - vec3(0., -.03, -.445), vec3(.024, .08, .008), .006), M_GUNMETAL));
+  // wooden stock: side profile (z back, y up) as a convex polygon, extruded and rounded.
+  // wrist leaves the receiver's rear face, comb drops gently, deep butt with rubber pad.
+  vec2 q = vec2(p.z, p.y);
+  float prof = -1e5;
+  const int NP = 6;
+  vec2 P[6] = vec2[6](vec2(-.125, .052), vec2(-.555, .012), vec2(-.565, -.148), vec2(-.30, -.082), vec2(-.17, -.062), vec2(-.125, -.035));
+  for (int i = 0; i < NP; i++){
+    vec2 e = P[(i + 1) % NP] - P[i];
+    vec2 nn = normalize(vec2(e.y, -e.x));
+    prof = max(prof, dot(q - P[i], nn));
+  }
+  float halfW = .017 + .006 * smoothstep(-.2, -.5, p.z);          // stock thickens toward the butt
+  float stock = length(max(vec2(prof + .008, abs(p.x) - halfW + .008), 0.)) + min(max(prof + .008, abs(p.x) - halfW + .008), 0.) - .008;
+  // semi-pistol grip swell under the wrist
+  float grip = sdRoundBox(rotX(p - vec3(0., -.075, -.17), -.45), vec3(.017, .045, .022), .012);
+  r = opU(r, vec2(smin(stock, grip, .02), M_WOOD));
+  // rubber buttpad
+  float pad = max(abs(p.z + .567) - .008, abs(p.x) - halfW);
+  pad = max(pad, dot(vec2(p.z, p.y) - vec2(-.56, .0), vec2(0., 1.)) - .012);
+  pad = max(pad, -(p.y + .15));
+  r = opU(r, vec2(pad, M_GUNMETAL));
   return r;
 }
 
@@ -98,9 +113,9 @@ vec2 map(vec3 p){
   }
 
   // ---- KS-23 on the table ----
-  vec3 gp = p - (tc + vec3(0.02, TABLE_TOP + 0.05, -0.02));
+  vec3 gp = p - (tc + vec3(0.02, TABLE_TOP + 0.027, -0.02));
   gp = rotY(gp, PI * 0.5 + 0.12);
-  gp = rotZ(gp, 0.035);
+  gp = rotZ(gp, -PI * 0.5);
   r = opU(r, sdKS23Detail(gp, clamp(uP[0], 0., 1.)));
 
   // ---- 23mm shells standing on the table ----
@@ -237,9 +252,13 @@ vec3 shade(vec2 h, vec3 p, vec3 n, vec3 rd){
   else if (m == MI_LOCKERB) albedo = steelAlbedo(p, true);
   else if (m == M_CONCRETE) albedo = vec3(.22,.21,.20) * (0.7+0.5*fbm3lo(p*4.));
   else if (m == M_WOOD) {
-    float grain = fbm3lo(p*9.) * 0.6 + 0.4 * noise3(p*60.);
-    albedo = mix(vec3(.17,.10,.05), vec3(.36,.23,.12), grain);
-    rough = 0.4;
+    // walnut: fine grain lines running along the gun (world x), figure from low-freq noise
+    float fig = fbm3lo(p * vec3(3., 14., 14.));
+    float lines = .5 + .5 * sin(p.y * 900. + p.z * 820. + fig * 14. + 4. * noise3(p * 40.));
+    float grain = mix(fig, lines, .18);
+    albedo = mix(vec3(.07, .032, .014), vec3(.2, .1, .042), grain);
+    albedo *= .85 + .3 * noise3(p * 90.);
+    rough = 0.32;
   }
   else if (m == MI_CRATE) albedo = crateAlbedo(p, n);
   else if (m == MI_BRASS) { albedo = vec3(.62,.48,.20); rough = 0.15; }
@@ -294,7 +313,7 @@ vec3 render(vec2 fc){
     vec3 ro0 = vec3(-0.30, 1.18, -1.75), ta0 = vec3(0.10, 0.95, 1.05);
     float ang1 = mix(0.05, 0.40, k);
     float rad1 = 1.05;
-    vec3 ro1 = TABLE_C + vec3(sin(ang1)*rad1, TABLE_TOP + 0.42, -cos(ang1)*rad1);
+    vec3 ro1 = TABLE_C + vec3(sin(ang1)*rad1, TABLE_TOP + 0.62, -cos(ang1)*rad1);
     vec3 ta1 = vec3(TABLE_C.x, TABLE_TOP + 0.02, TABLE_C.z);
     ro = mix(ro0, ro1, ke);
     ta = mix(ta0, ta1, ke);

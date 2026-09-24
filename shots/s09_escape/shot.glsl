@@ -51,16 +51,19 @@ vec2 sdVehicle(vec3 p, float t){
   r = opU(r, vec2(sdSphere(p - vec3( 0.75,1.15,-2.72), 0.075), H_TAIL));
   // exhaust stack
   r = opU(r, vec2(sdCylY(p - vec3(0.95,2.35,-2.0), 0.05, 0.5), H_TRACK));
-  // rear platform + silhouette figure throwing a grenade
-  vec3 fp = p - vec3(-0.35, 2.95, -2.55);
-  float armT = clamp((t - 6.6)/1.0, 0.0, 1.0);
-  float wind = smoothstep(0.0,0.4,armT) * (1.0-smoothstep(0.6,1.0,armT));
-  float body = sdCapsule(fp, vec3(0.,0.,0.), vec3(0.,0.62,0.), 0.13);
-  float head = sdSphere(fp - vec3(0.,0.78,0.02), 0.10);
-  vec3 armDir = normalize(vec3(0.15, mix(0.1,0.9,wind), mix(0.3,-0.5,wind)));
-  float arm = sdCapsule(fp, vec3(0.,0.55,0.02), vec3(0.,0.55,0.02) + armDir*0.55, 0.05);
-  float fig = min(body, min(head, arm));
-  r = opU(r, vec2(fig, H_FIG));
+  // rear platform + silhouette figure throwing a grenade (only matters ~6.5-8s, close up;
+  // skip it after that to save primitives on every other map() call)
+  if (t < 8.2){
+    vec3 fp = p - vec3(-0.35, 2.95, -2.55);
+    float armT = clamp((t - 6.6)/1.0, 0.0, 1.0);
+    float wind = smoothstep(0.0,0.4,armT) * (1.0-smoothstep(0.6,1.0,armT));
+    float body = sdCapsule(fp, vec3(0.,0.,0.), vec3(0.,0.62,0.), 0.13);
+    float head = sdSphere(fp - vec3(0.,0.78,0.02), 0.10);
+    vec3 armDir = normalize(vec3(0.15, mix(0.1,0.9,wind), mix(0.3,-0.5,wind)));
+    float arm = sdCapsule(fp, vec3(0.,0.55,0.02), vec3(0.,0.55,0.02) + armDir*0.55, 0.05);
+    float fig = min(body, min(head, arm));
+    r = opU(r, vec2(fig, H_FIG));
+  }
   return r;
 }
 
@@ -175,7 +178,7 @@ vec2 mapExterior(vec3 p, float t){
 
   // debris chunks thrown by the blast
   float bt = max(t - EXT_T, 0.0);
-  for (int i = 0; i < 8; i++){
+  for (int i = 0; i < 5; i++){
     float fi = float(i);
     vec3 dir = normalize(hash33(vec3(fi, 3.1, 7.2)) - 0.5 + vec3(0.,0.6,0.3));
     float dist = min(bt * 4.0, 10.0) * (0.5 + 0.5*hash11(fi+2.0));
@@ -211,7 +214,7 @@ vec3 nrm(vec3 p){
 
 float shadow(vec3 ro, vec3 rd, float maxT){
   float res = 1.0, tt = 0.03;
-  for (int i = 0; i < 12; i++){
+  for (int i = 0; i < 8; i++){
     float h = map(ro + rd*tt).x;
     res = min(res, 8.0*h/tt);
     tt += clamp(h, 0.03, 0.3);
@@ -234,7 +237,7 @@ vec3 fireballColor(vec3 ro, vec3 rd, float d, float t){
   float t0 = max(-b - sq, 0.0), t1 = min(-b + sq, d);
   if (t1 <= t0) return vec3(0.);
   vec3 col = vec3(0.);
-  const int FS = 10;
+  const int FS = 6;
   float dith = fract(sin(dot(rd.xy, vec2(41.3,7.1)))*4131.3);
   for (int i = 0; i < FS; i++){
     float ft = (float(i)+dith)/float(FS);
@@ -290,7 +293,9 @@ vec3 shade(vec2 h, vec3 p, vec3 n, vec3 rd, vec3 keyPos, vec3 keyCol, float keyI
   vec3 L = keyPos - p; float ld = length(L); L /= max(ld,1e-4);
   float ndl = max(dot(n,L), 0.0);
   float atten = 1.0 / (1.0 + ld*ld*keyAtten);
-  float sh = shadow(p + n*0.008, L, ld);
+  // shadows only matter for the interior key light; the exterior fireball glow is a soft
+  // ambient wash, so skip the extra raymarches there to keep the blast frames cheap.
+  float sh = ext ? 1.0 : shadow(p + n*0.008, L, ld);
   col += albedo * ndl * atten * sh * keyCol * keyInt;
 
   vec3 h2 = normalize(L - rd);
@@ -338,14 +343,17 @@ vec3 render(vec2 fc){
   vec3 rd = camRay(fc, ro, ta, focal, t < 5.0 ? 0.03 : 0.0);
 
   bool ext = t >= EXT_T;
+  int maxSteps = ext ? 90 : 130;
+  float maxDist = ext ? 45.0 : 60.0;
   float d = 0.0; vec2 h; bool hitAny = false;
   for (int i = 0; i < 130; i++){
+    if (i >= maxSteps) break;
     vec3 p = ro + rd*d;
     h = map(p);
     float th = 0.0018 * max(d,1.0);
     if (h.x < th){ hitAny = true; break; }
-    d += h.x * 0.82;
-    if (d > 60.0) break;
+    d += h.x * 0.85;
+    if (d > maxDist) break;
   }
 
   // key light: headlights pre-ram / fireball glow post-blast, else sodium work lights

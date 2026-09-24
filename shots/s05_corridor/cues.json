@@ -1,25 +1,134 @@
 {
-  "ambience": "interior_dead",
-  "cues": [
-    { "t": 0.0, "type": "fluorescent_buzz", "gain": 0.5, "dur": 12.2 },
-    { "t": 0.2, "type": "footsteps", "gain": 0.4, "dur": 12.0 },
-    { "t": 0.4, "type": "breath", "gain": 0.4, "dur": 11.6 },
-    { "t": 0.5, "type": "heartbeat", "gain": 0.3, "dur": 11.5 },
-    { "t": 2.45, "type": "light_flicker", "gain": 0.7 },
-    { "t": 2.9, "type": "light_flicker", "gain": 1.0 },
-    { "t": 3.35, "type": "light_flicker", "gain": 0.8 },
-    { "t": 6.6, "type": "light_flicker", "gain": 0.7 },
-    { "t": 7.05, "type": "light_flicker", "gain": 1.0 },
-    { "t": 7.5, "type": "light_flicker", "gain": 0.8 },
-    { "t": 9.1, "type": "light_flicker", "gain": 0.7 },
-    { "t": 9.55, "type": "light_flicker", "gain": 1.0 },
-    { "t": 9.95, "type": "light_flicker", "gain": 0.8 },
-    { "t": 10.0, "type": "growl", "gain": 0.6, "dur": 1.6 },
-    { "t": 11.3, "type": "light_flicker", "gain": 0.7 },
-    { "t": 11.75, "type": "light_flicker", "gain": 1.0 },
-    { "t": 11.9, "type": "heartbeat", "gain": 0.9, "dur": 0.3 },
-    { "t": 12.1, "type": "growl", "gain": 1.0, "dur": 0.2 },
-    { "t": 12.2, "type": "shriek", "gain": 1.0 },
-    { "t": 12.2, "type": "stinger", "gain": 1.0 }
-  ]
+ "ambience": "interior_dead",
+ "cues": [
+  {
+   "t": 0.0,
+   "type": "fluorescent_buzz",
+   "gain": 0.5,
+   "dur": 11.6
+  },
+  {
+   "t": 0.2,
+   "type": "footsteps",
+   "gain": 0.4,
+   "dur": 9.7
+  },
+  {
+   "t": 0.3,
+   "type": "breath",
+   "gain": 0.35,
+   "dur": 11.3
+  },
+  {
+   "t": 0.5,
+   "type": "heartbeat",
+   "gain": 0.3,
+   "dur": 11.0
+  },
+  {
+   "t": 1.2,
+   "type": "growl",
+   "gain": 0.2,
+   "dur": 1.2
+  },
+  {
+   "t": 2.8,
+   "type": "light_flicker",
+   "gain": 1.0
+  },
+  {
+   "t": 3.3,
+   "type": "light_flicker",
+   "gain": 0.8
+  },
+  {
+   "t": 3.3,
+   "type": "drone_swell",
+   "gain": 0.5,
+   "dur": 4.0
+  },
+  {
+   "t": 5.6,
+   "type": "light_flicker",
+   "gain": 1.0
+  },
+  {
+   "t": 5.8,
+   "type": "light_flicker",
+   "gain": 0.8
+  },
+  {
+   "t": 7.0,
+   "type": "light_flicker",
+   "gain": 1.0
+  },
+  {
+   "t": 7.5,
+   "type": "light_flicker",
+   "gain": 0.8
+  },
+  {
+   "t": 7.5,
+   "type": "stinger",
+   "gain": 0.35
+  },
+  {
+   "t": 9.4,
+   "type": "light_flicker",
+   "gain": 1.0
+  },
+  {
+   "t": 9.9,
+   "type": "light_flicker",
+   "gain": 0.8
+  },
+  {
+   "t": 9.9,
+   "type": "growl",
+   "gain": 0.7,
+   "dur": 1.6
+  },
+  {
+   "t": 9.9,
+   "type": "drone_swell",
+   "gain": 0.7,
+   "dur": 2.2
+  },
+  {
+   "t": 11.45,
+   "type": "light_flicker",
+   "gain": 0.6
+  },
+  {
+   "t": 11.6,
+   "type": "light_flicker",
+   "gain": 1.0
+  },
+  {
+   "t": 11.7,
+   "type": "heartbeat",
+   "gain": 0.9,
+   "dur": 0.45
+  },
+  {
+   "t": 12.15,
+   "type": "light_flicker",
+   "gain": 0.8
+  },
+  {
+   "t": 12.15,
+   "type": "shriek",
+   "gain": 1.0
+  },
+  {
+   "t": 12.15,
+   "type": "stinger",
+   "gain": 1.0
+  },
+  {
+   "t": 12.15,
+   "type": "music_hit",
+   "gain": 0.8
+  }
+ ]
 }
