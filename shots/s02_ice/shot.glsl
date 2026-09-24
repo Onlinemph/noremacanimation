@@ -8,6 +8,8 @@
 
 const vec2 WIND = vec2(0.92, 0.39);          // wind direction (xz), roughly normalized
 const float WSPD = 1.6;
+// screen-space wind direction: blizzard blows mostly SIDEWAYS across frame, slight downward bias
+const vec2 SWIND = normalize(vec2(1.0, -0.22));
 
 // ---------------------------------------------------------------- terrain ---
 // Cheap-ish height field: rolling plateau + wind-aligned sastrugi ridges.
@@ -65,11 +67,14 @@ vec2 sdSnoCat(vec3 p){
   r = opU(r, vec2(sdRoundBox(p - vec3(0., .95, 1.75), vec3(.85, .28, .35), .1), V_BODY));
   vec3 tp = vec3(abs(p.x) - 1.18, p.y - .42, p.z);
   r = opU(r, vec2(sdRoundBox(tp, vec3(.26, .42, 2.15), .2), V_TRACK));
-  r = opU(r, vec2(sdRoundBox(p - vec3(0., 2.02, .55), vec3(.55, .06, .08), .03), V_CHROME));
-  vec3 lp = vec3(abs(p.x) - .62, p.y - .92, p.z - 2.02);
-  r = opU(r, vec2(sdSphere(lp, .1), V_LAMP));
+  // light bar spanning the roof, plus two round headlight housings set apart near the corners
+  r = opU(r, vec2(sdRoundBox(p - vec3(0., 2.04, .58), vec3(.62, .07, .09), .03), V_CHROME));
+  vec3 lp = vec3(abs(p.x) - .8, p.y - .92, p.z - 2.02);
+  r = opU(r, vec2(sdSphere(lp, .12), V_LAMP));
   return r;
 }
+// vehicle-local coordinates of a world point (used for shading features tied to the body).
+vec3 vehLocal(vec3 p, vec3 vp){ vec3 q = p - vp; q.xz *= rot2(PI); return q; }
 
 // world-space vehicle placement: travels toward camera along -Z at fixed lane offset, passing left.
 vec3 vehiclePos(float t){
@@ -144,14 +149,25 @@ float snowStreaks(vec2 uv, float t, float gust){
 }
 
 // ------------------------------------------------------------------ shade ---
-vec3 vehicleAlbedo(float m, vec3 p){
-  if (m == V_TRACK)  return vec3(.045, .043, .04) * (0.7 + 0.4 * noise3(p * 40.));
+// pl = vehicle-LOCAL coordinates of the hit point (see vehLocal) — used so grime/tread/window
+// features stay locked to the body instead of sliding as the vehicle drives through world space.
+vec3 vehicleAlbedo(float m, vec3 p, vec3 pl){
+  if (m == V_TRACK){
+    float tread = smoothstep(.42, .48, abs(fract(pl.z * 2.6) - .5));
+    return vec3(.05, .048, .045) * (0.55 + 0.35 * tread) * (0.7 + 0.4 * noise3(p * 40.));
+  }
   if (m == V_GLASS)  return vec3(.02, .03, .035);
-  if (m == V_CHROME) return vec3(.25, .25, .27);
+  if (m == V_CHROME) return vec3(.22, .22, .24);
   float grime = smoothstep(.35, .8, fbm3lo(p * 3.5 + 4.));
   float frost = smoothstep(.5, .9, fbm3lo(p * 6.0 - 2.));
   vec3 red = mix(vec3(.62, .09, .05), vec3(.22, .03, .02), grime);
   return mix(red, vec3(.55, .58, .6), frost * .5);
+}
+// faint warm cab-window glow (frosted glass, backlit by nothing but sells "cab" silhouette)
+float vehWindowGlow(vec3 pl){
+  vec3 cq = pl - vec3(0., 1.62, .35);
+  float onFace = smoothstep(.14, .02, abs(cq.z - 1.1)) * smoothstep(.42, .2, abs(cq.x)) * smoothstep(.4, .1, abs(cq.y - .05));
+  return onFace;
 }
 
 vec3 render(vec2 fc){

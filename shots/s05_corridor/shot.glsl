@@ -92,16 +92,19 @@ vec3 matAlbedo(float m, vec3 p, vec3 n){
   if (m == M_STEEL){
     float split = 1.3;
     float edge = smoothstep(split-.08, split+.08, p.y);
-    vec3 lower = vec3(.19,.27,.23), upper = vec3(.56,.53,.44);
+    vec3 lower = vec3(.16,.23,.20), upper = vec3(.5,.47,.4);
     vec3 base = mix(lower, upper, edge);
     float grime = fbm3lo(p*1.3);
-    base *= mix(1., .55, smoothstep(.5,.85,grime));
-    float frost = smoothstep(.55,.93, fbm3lo(p*6.5+21.));
-    base = mix(base, vec3(.82,.89,.95), frost*.45);
-    // blood drag streak along the floor-adjacent wall base near the doorway
+    base *= mix(1., .5, smoothstep(.5,.85,grime));
+    float stain = smoothstep(.6,.9, fbm3lo(p*.7 + vec3(0.,p.y*.2,0.)));
+    base *= mix(1., .65, stain * smoothstep(2.6, .3, p.y));  // water stains running down
+    // frost crust: heaviest low on the wall, fading out above the paint line
+    float frostN = fbm3lo(p*6.5+21.);
+    float frost = smoothstep(.4,.85, frostN) * smoothstep(1.9, .0, p.y);
+    base = mix(base, vec3(.78,.86,.93), frost*.6);
     return base;
   }
-  if (m == M_GUNMETAL) return vec3(.045,.05,.055)*(.7+.5*noise3(p*160.));
+  if (m == M_GUNMETAL) return vec3(.03,.033,.036)*(.7+.5*noise3(p*160.));
   if (m == 22.0) return vec3(.9,.92,.95);                 // fluorescent tube lens (emissive-ish, lit separately)
   if (m == 23.0) return vec3(.72,.7,.6)*(.7+.4*noise3(p*40.));  // papers
   if (m == 24.0) return vec3(.5,.12,.1)*(.6+.5*noise3(p*20.));  // poster (faded red Soviet poster)
@@ -136,42 +139,68 @@ vec3 render(vec2 fc){
   if (!hit) return vec3(0.002,0.002,0.003);
 
   vec3 n = nrm(p);
-  vec3 alb = (h.y > .5 && h.y < 4.5) ? monsterAlbedo(h.y, p) : matAlbedo(h.y, p, n);
+  bool isMon = h.y >= .5 && h.y <= 4.5;
+  vec3 alb = isMon ? monsterAlbedo(h.y, p) : matAlbedo(h.y, p, n);
 
   float lightI = uP[0];
   float closeUp = uP[2];
+  bool finalPhase = closeUp > .001;
 
-  // fluorescent fixtures light the corridor from above, each modulated by the scripted flicker
-  float fillAmb = .006 + lightI*.01;
-  col += alb * fillAmb;
-  for (int k = 0; k < 6; k++){
-    float fkz = float(k) * 3.0 - 1.5;
-    vec3 lp = vec3(0., ROOMH-.1, fkz);
-    vec3 L = lp - p; float dist = max(length(L), .8);
-    if (dist > 11.0) continue;
-    float atten = lightI / (1. + dist*dist*.55);
-    float ndotl = max(dot(n, L/dist), 0.);
-    col += alb * ndotl * atten * vec3(.85,.92,1.0) * 3.2;
+  col += alb * .0025; // near-black ambient floor — most of the frame should read dark
+
+  // the character's own flashlight, mounted at the camera, slight independent handheld sway
+  vec3 flDir = normalize(rd + vec3(sin(t*2.3)*.02, cos(t*1.9)*.015, 0.));
+  vec3 flPos = ro + vec3(.10,-.06,.05);
+  {
+    vec3 L = p - flPos; float dist = max(length(L), .4);
+    float cone = spotLight(p, flPos, flDir, .82, .965) * flashCookie(p, flPos, flDir);
+    float ndotl = max(dot(n, -L/dist), 0.);
+    float flPow = finalPhase ? 1.0 : 0.62;
+    col += alb * ndotl * cone * flPow * vec3(1.0,.97,.92) * 3.6;
   }
 
-  // harsh under/front light for the final face-reveal
-  if (closeUp > .001){
-    vec3 lp = ro + vec3(.15, -.25, .45);
-    vec3 L = lp - p; float dist = max(length(L), .3);
-    float atten = closeUp / (1. + dist*dist*1.6);
-    col += alb * max(dot(n, L/dist),0.) * atten * vec3(1.15,1.0,.85) * 2.6;
+  // fluorescent fixtures: most are dead. only a sparse deterministic subset ever lights up,
+  // and it pools tightly (steep falloff) rather than flooding the whole corridor.
+  if (!finalPhase){
+    for (int k = 0; k < 9; k++){
+      float fkz = float(k) * 3.0 - 1.5;
+      float alive = step(0.62, hash11(float(k)*7.13 + 4.0));
+      if (alive < .5) continue;
+      vec3 lp = vec3(0., ROOMH-.1, fkz);
+      vec3 L = lp - p; float dist = max(length(L), .6);
+      if (dist > 6.5) continue;
+      float atten = lightI / (1. + dist*dist*1.7);
+      float ndotl = max(dot(n, L/dist), 0.);
+      col += alb * ndotl * atten * vec3(.8,.9,1.0) * 3.0;
+      // fake haze glow around the pool, cheap (no extra march)
+      col += vec3(.5,.6,.75) * atten * atten * .4;
+    }
   }
 
-  // monster gets a rim of whatever ambient light is present so it reads as a silhouette
-  if (h.y >= .5 && h.y <= 4.5){
-    float rim = pow(1.0 - max(dot(n, -rd), 0.), 3.0);
-    col += vec3(.5,.55,.65) * rim * (lightI*.5 + closeUp*.4 + .05);
+  // harsh flashlight-driven under/front light for the final face-reveal (camera is right on it)
+  if (finalPhase){
+    vec3 lp = ro + vec3(.08,-.2,.35);
+    vec3 L = lp - p; float dist = max(length(L), .25);
+    float atten = closeUp / (1. + dist*dist*2.2);
+    col += alb * max(dot(n, L/dist),0.) * atten * vec3(1.2,1.0,.8) * 3.4;
   }
 
-  // thin ice-fog for depth cueing
-  float fog = 1.0 - exp(-d * 0.028);
-  vec3 fogCol = vec3(.02,.025,.03) + vec3(.01,.012,.02)*lightI;
-  col = mix(col, fogCol, clamp(fog,0.,0.85));
+  // monster: keep it mostly in shadow — a rim from whatever light is behind it, face reads dark
+  // unless the flashlight is square on it (close phases / final)
+  if (isMon){
+    float rim = pow(1.0 - max(dot(n, -rd), 0.), 2.5);
+    col += vec3(.35,.4,.5) * rim * (lightI*.35 + .04);
+  }
+
+  // cold volumetric haze: thicker with distance, and glowing where the flashlight cone crosses it
+  float hazeAmt = 1.0 - exp(-d * 0.05);
+  vec3 hazeCol = vec3(.006,.007,.009);
+  {
+    vec3 L = p - flPos; float dist = max(length(L), .4);
+    float cone = spotLight(p, flPos, flDir, .8, .96);
+    hazeCol += vec3(.35,.38,.42) * cone * .05 * min(d, 8.0);
+  }
+  col = mix(col, hazeCol, clamp(hazeAmt, 0., finalPhase ? 0.97 : 0.9));
 
   return col;
 }

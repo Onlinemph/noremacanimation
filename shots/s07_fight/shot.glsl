@@ -125,6 +125,30 @@ vec2 evalFightMonster(int i, vec3 p, float t){
   return sdMonster(lp, animT, seed, run);
 }
 
+// blood spray: a handful of SDF droplets flung from the hit point at the instant
+// of each kill, arcing under gravity and shrinking — reads clearly against the
+// muzzle-flash / lit background for one glance legibility.
+vec2 evalBloodSpray(vec3 p, float t){
+  vec2 r = vec2(1e5, M_GORE);
+  for (int i = 0; i < 9; i++){
+    float kt = fKillT(i);
+    float dt = t - kt;
+    if (dt < 0.0 || dt > 0.4) continue;
+    vec2 hitxz = fightPosXZ(i, kt);
+    vec3 hp = vec3(hitxz.x, 1.1, hitxz.y);
+    float seed = fSeed(i);
+    for (int k = 0; k < 5; k++){
+      vec3 h3 = hash33(vec3(seed * 7.0 + float(k), float(i), 3.1));
+      vec3 dir = normalize(vec3(h3.x - .5, h3.y * .6 + .15, -(h3.z * .5 + .25)));
+      float spd = 2.2 + 2.6 * h3.x;
+      vec3 dp = hp + dir * spd * dt - vec3(0., 4.2 * dt * dt, 0.);
+      float rad = max(.004, .05 * (1.0 - dt / 0.4));
+      r = opU(r, vec2(sdSphere(p - dp, rad), M_GORE));
+    }
+  }
+  return r;
+}
+
 // ------------------------------------------------------------- reveal crowd -
 vec2 cVec(int i){
   vec2 a[10] = vec2[10](
@@ -173,6 +197,7 @@ vec2 map(vec3 p){
   vec2 r = room(p);
   r = opU(r, tables(p));
   for (int i = 0; i < 9; i++) r = opU(r, evalFightMonster(i, p, iTime));
+  r = opU(r, evalBloodSpray(p, iTime));
   if (iTime > 18.6) for (int i = 0; i < 10; i++) r = opU(r, evalCrowd(i, p, iTime));
   r = opU(r, evalGun(p));
   return r;
@@ -203,30 +228,35 @@ vec3 shade(vec3 p, vec3 n, vec3 rd, float m, float seed){
     paint = mix(paint, goreColor(p) * .6, bl * step(p.y, .08));
     alb = paint; spec = .08 + frost * .3;
   }
-  vec3 col = vec3(0.);
+  vec3 lit = vec3(0.);
   float ao = clamp(map(p + n * .18).x / .18, .1, 1.);
+  float rim = pow(1.0 - max(dot(n, -rd), 0.), 3.0);
+  bool isGun = (m > 4.5 && m < 6.5);
 
-  // rotating red emergency beacon
+  // rotating red emergency beacon: a tight sweeping cone, not a fill
   vec3 bpos = vec3(0., CORR_H - .1, 1.2);
   float bang = iTime * 1.9;
   vec3 bdir = normalize(vec3(sin(bang), -.22, cos(bang)));
-  float bsweep = spotLight(p, bpos, bdir, .35, .85) * (.6 + .4 * abs(sin(bang * 2.)));
+  float bsweep = spotLight(p, bpos, bdir, .55, .93) * (.55 + .45 * abs(sin(bang * 2.)));
   vec3 L1 = normalize(bpos - p);
-  col += vec3(1., .06, .04) * bsweep * max(dot(n, L1), 0.) * 3.2;
+  lit += vec3(1., .05, .04) * bsweep * max(dot(n, L1), 0.) * 2.6;
+  if (isGun) lit += vec3(1., .05, .04) * bsweep * rim * 1.6;
 
   // flashlight mounted under the gun, aimed with camera
   vec3 fdir = gFwd;
   vec3 L2 = normalize(gGunPos - p);
   float fl = spotLight(p, gGunPos, fdir, .80, .975) * flashCookie(p, gGunPos, fdir);
-  col += vec3(.85, .92, 1.0) * fl * max(dot(n, L2), 0.) * 6.5;
+  lit += vec3(.85, .92, 1.0) * fl * max(dot(n, L2), 0.) * 6.5;
+  if (isGun) lit += vec3(.85, .92, 1.0) * .5 * rim;
 
-  // muzzle flash
+  // muzzle flash: brief, blinding, whites out whatever it hits
   float mf = uP[2];
   if (mf > .001){
     vec3 mpos = gGunPos + gFwd * .62;
     vec3 L3 = normalize(mpos - p);
     float d3 = length(mpos - p);
-    col += vec3(1., .82, .55) * mf * max(dot(n, L3), 0.) * 14. / (1. + d3 * d3 * .5);
+    lit += vec3(1., .82, .55) * mf * max(dot(n, L3), 0.) * 16. / (1. + d3 * d3 * .5);
+    if (isGun) lit += vec3(1., .8, .55) * mf * 1.5;
   }
 
   // AK / PPSh strobing muzzle flashes from off-screen left
@@ -234,32 +264,33 @@ vec3 shade(vec3 p, vec3 n, vec3 rd, float m, float seed){
   if (ak + pp > .001){
     vec3 lpos = vec3(-3.6, 1.5, 1.0);
     vec3 L4 = normalize(lpos - p);
-    col += vec3(.9, .93, 1.0) * (ak + pp) * max(dot(n, L4), 0.) * 2.6;
+    lit += vec3(.9, .93, 1.0) * (ak + pp) * max(dot(n, L4), 0.) * 2.6;
   }
 
-  // flare: airborne then landed, floods far end with pulsing magenta-red + smoke glow
+  // flare: airborne, then a small, intense, localized core on the ground far end.
+  // Falls off hard within ~6-8m so it does not wash the whole corridor pink; anything
+  // between the flare and camera (the crowd) stays a dark silhouette against the glow.
   float fp = uP[6], fg = uP[7], rv = uP[8];
   if (fp > .001 || rv > .001){
     float arc = sin(fp * PI) * 2.2;
     vec3 flarePos = mix(vec3(-1.1, 1.6, .2), vec3(.2, .25, 15.5), fp) + vec3(0., arc, 0.);
     vec3 L5 = normalize(flarePos - p);
     float d5 = length(flarePos - p);
-    float pulse = .7 + .3 * sin(iTime * 5.0);
-    col += vec3(1., .12, .35) * (fp > .001 && fp < 1. ? 1.0 : fg * pulse) * max(dot(n, L5), 0.) * 9.0 / (1. + d5 * d5 * .12);
-    col += vec3(1., .15, .3) * rv * .35; // ambient bounce filling the far end
+    float pls = .75 + .25 * sin(iTime * 5.0);
+    float falloff = 1. / (1. + d5 * d5 * .55);
+    lit += vec3(1., .10, .30) * (fp > .001 && fp < 1. ? 1.4 : fg * pls) * max(dot(n, L5), 0.) * 12. * falloff;
+    if (isGun) lit += vec3(1., .12, .32) * fg * rim * 1.2 * falloff;
   }
 
-  col *= ao;
-  // faint ambient so nothing is pure black
-  col += alb * .03;
-  // gun always gets a small guaranteed fill so its silhouette/detail reads
-  if (m > 4.5 && m < 6.5) col += alb * .22 * (0.3 + 0.7 * max(dot(n, -rd), 0.));
+  vec3 col = lit * ao;
+  // near-black ambient floor: keeps unlit surfaces reading as silhouette, not grey mush
+  col += alb * .006;
+  if (isGun) col += alb * .02; // just enough that the gun never vanishes to pure void
   // specular from strongest nearby source (beacon/flashlight combined dir approx)
   vec3 Ls = normalize(L2 + L1 * .3);
   float sp = pow(max(dot(reflect(-Ls, n), -rd), 0.), 28.) * spec;
-  col += sp * (fl * 3. + bsweep) ;
+  col += (fl * 3. + bsweep + mf * 2.) * sp;
   col *= alb;
-  col += alb * sp * .0; // (albedo already applied; spec added additively above via alb*col mixing kept simple)
   return col;
 }
 
@@ -276,14 +307,18 @@ vec3 volumetric(vec3 ro, vec3 rd, float tmax){
   for (int i = 0; i < 7; i++){
     float ti = (float(i) + dith) / steps * min(tmax, 16.0);
     vec3 p = ro + rd * ti;
-    float fog = exp(-ti * .045);
-    float bl = spotLight(p, bpos, bdir, .35, .85) * (.6 + .4 * abs(sin(bang * 2.)));
-    acc += vec3(1., .07, .05) * bl * fog * .05;
+    float fog = exp(-ti * .07);
+    // beacon: a thin sweeping shaft, not ambient wash
+    float bl = spotLight(p, bpos, bdir, .55, .94) * (.55 + .45 * abs(sin(bang * 2.)));
+    acc += vec3(1., .05, .04) * bl * fog * .016;
+    // flashlight shaft under the gun
     float fl = spotLight(p, gGunPos, gFwd, .90, .985);
-    acc += vec3(.8, .9, 1.0) * fl * fog * .045;
-    if (fg > .001){
+    acc += vec3(.8, .9, 1.0) * fl * fog * .020;
+    // flare: tight, only glows near its own position (landing point / arc)
+    if (fg > .001 || (fp > .001 && fp < 1.)){
       float d5 = length(flarePos - p);
-      acc += vec3(1., .12, .3) * fg * fog * .35 / (1. + d5 * d5 * .1);
+      float k = fp > .001 && fp < 1. ? 1.0 : fg;
+      acc += vec3(1., .10, .28) * k * fog * .09 / (1. + d5 * d5 * .35);
     }
   }
   return acc * (min(tmax,16.0) / steps);

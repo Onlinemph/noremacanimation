@@ -39,6 +39,7 @@ function drawMonoLine(ctx, text, x, y, size, revealProgress, tSeed, resolvedColo
 export default {
   duration: 15,
   fps: 24,
+  sceneScale: 0.75,
 
   post(t) {
     const p = { bar: 0.12 };

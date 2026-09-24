@@ -25,21 +25,43 @@ vec3 projectPoint(vec3 wp){
 // ============================================================ exterior: fire + smoke ===
 float fireFlicker(float t){ return 0.75 + 0.25 * noise2(vec2(t * 9.0, 3.0)) + 0.12 * noise2(vec2(t * 27.0, 7.0)); }
 
-// procedural plume (smoke+fire column) in local coords lp (screen units, origin at base)
+// cheap 3-octave fbm, used a lot in the exterior so kept lighter than the shared 5-octave fbm2
+float fbmLo(vec2 p){ float a = 0.5, s = 0.0; for (int i = 0; i < 3; i++){ s += a * noise2(p); p = p * 2.08 + 11.3; a *= 0.5; } return s; }
+
+float sdRoundBox2(vec2 p, vec2 b, float r){ vec2 q = abs(p) - b + r; return length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - r; }
+float sdCircle2(vec2 p, float r){ return length(p) - r; }
+
+// Object 9's roofline at the base of the fire: low modules + a dome + a mast, backlit black silhouette
+float baseSil(vec2 lp){
+  float m1 = sdRoundBox2(lp - vec2(-1.05, 0.16), vec2(0.62, 0.17), 0.03);
+  float m2 = sdRoundBox2(lp - vec2(0.05, 0.24), vec2(0.85, 0.25), 0.04);
+  float m3 = sdRoundBox2(lp - vec2(1.15, 0.14), vec2(0.5, 0.15), 0.03);
+  float dome = sdCircle2(lp - vec2(0.05, 0.46), 0.24);
+  float mast = sdRoundBox2(lp - vec2(0.62, 0.95), vec2(0.018, 0.62), 0.01);
+  float d = min(m1, min(m2, m3));
+  d = min(d, dome);
+  d = min(d, mast);
+  return d;
+}
+
+// procedural plume (smoke+fire column) in local coords lp (screen units, origin at base).
+// Billows and bends with a wind shear that increases with height; domain-warped for turbulence.
 vec3 plumeColor(vec2 lp, float t, float flick){
   vec3 col = vec3(0.0);
-  float h = clamp(lp.y, 0.0, 3.0);
-  // smoke: wide, billowing, tapers as it rises, drifts sideways with altitude
-  float drift = h * h * 0.12 + sin(t * 0.2 + h) * 0.05;
-  vec2 sp = vec2(lp.x - drift, lp.y * 0.9) ;
-  float smokeN = fbm2(sp * vec2(2.2, 1.6) + vec2(t * 0.1, -t * 0.5));
-  float width = 0.10 + h * 0.30 + 0.10 * smokeN;
-  float smokeMask = smoothstep(width, width * 0.4, abs(lp.x - drift)) * smoothstep(2.6, 0.15, h) * (0.3 + 0.55 * smokeN);
-  vec3 smokeCol = mix(vec3(0.10, 0.05, 0.035), vec3(0.03, 0.028, 0.03), smoothstep(0.1, 1.6, h));
+  float h = clamp(lp.y, 0.0, 3.4);
+  float wind = h * h * 0.16 + h * 0.05 + 0.05 * sin(t * 0.15);
+  vec2 sp = vec2(lp.x - wind, lp.y * 0.75);
+  vec2 warp = vec2(fbmLo(sp * 1.7 + vec2(0.0, -t * 0.3)), fbmLo(sp * 1.7 + vec2(5.2, -t * 0.22))) - 0.5;
+  float n = fbmLo(sp * 2.1 + warp * 1.3 + vec2(0.0, -t * 0.45));
+  float width = 0.16 + h * 0.40 + 0.10 * n;
+  float cx = lp.x - wind - warp.x * 0.18;
+  float smokeMask = smoothstep(width, width * 0.25, abs(cx)) * smoothstep(3.1, 0.1, h) * (0.35 + 0.6 * n);
+  float heat = smoothstep(0.9, -0.1, h);
+  vec3 smokeCol = mix(vec3(0.05, 0.045, 0.048), vec3(0.34, 0.15, 0.06), heat * (0.55 + 0.35 * n));
   col += smokeCol * smokeMask;
   // fireball glow at the base, orange-white, flickering, small and hot
-  float fireN = fbm2(lp * vec2(7.0, 9.0) + vec2(0.0, -t * 2.4));
-  float fireMask = smoothstep(0.16, 0.0, length(lp * vec2(1.1, 1.9)) - 0.04 * fireN);
+  float fireN = fbmLo(lp * vec2(6.0, 8.0) + vec2(0.0, -t * 2.3));
+  float fireMask = smoothstep(0.20, 0.0, length(lp * vec2(1.0, 1.7)) - 0.05 * fireN);
   vec3 fireCol = mix(vec3(2.8, 1.0, 0.18), vec3(4.5, 2.4, 0.7), fireN) * flick;
   col += fireCol * fireMask;
   return col;
@@ -48,7 +70,7 @@ vec3 plumeColor(vec2 lp, float t, float flick){
 // sparks / embers rising from the fire (screen space, additive)
 vec3 embers(vec2 uv, vec2 anchor, float t){
   vec3 col = vec3(0.0);
-  for (int i = 0; i < 22; i++){
+  for (int i = 0; i < 12; i++){
     float fi = float(i);
     vec2 seed = vec2(fi * 12.9, fi * 3.7);
     float life = fract(t * 0.22 + hash21(seed));
@@ -64,7 +86,6 @@ vec3 embers(vec2 uv, vec2 anchor, float t){
 }
 
 // ============================================================ exterior: vehicle ===
-float sdRoundBox2(vec2 p, vec2 b, float r){ vec2 q = abs(p) - b + r; return length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - r; }
 // Kharkovchanka silhouette in local coords lp (meters, origin at ground under the vehicle)
 float vehSil(vec2 lp){
   float track = sdRoundBox2(lp - vec2(0.0, 0.32), vec2(1.7, 0.30), 0.08);
@@ -98,21 +119,29 @@ vec3 exteriorScene(vec2 fc, vec2 uv, float t){
     float dist = -gCamRo.y / rd.y;
     vec3 wp = gCamRo + rd * dist;
     float fog = 1.0 - exp(-dist * 0.035);
-    float sn = fbm2(wp.xz * 0.35 + vec2(t * 0.6, 0.0));
-    float sn2 = fbm2(wp.xz * 2.2 - vec2(t * 1.2, 0.0));
-    vec3 snowCol = mix(vec3(0.014, 0.017, 0.028), vec3(0.03, 0.036, 0.055), sn) * (0.7 + 0.5 * sn2);
-    snowCol += vec3(0.02, 0.035, 0.03) * clamp(aurora(vec3(0.0, 1.0, 0.0), t).g * 3.0, 0.0, 1.0); // faint reflected aurora
+    float sn = fbmLo(wp.xz * 0.35 + vec2(t * 0.6, 0.0));
+    float sn2 = fbmLo(wp.xz * 2.4 - vec2(t * 1.3, 0.0));
+    vec3 snowCol = mix(vec3(0.014, 0.017, 0.028), vec3(0.032, 0.038, 0.058), sn) * (0.7 + 0.5 * sn2);
     // fire glow pooling on the snow near Object 9, falls off tightly (meters, not km)
     float dFire = distance(wp.xz, fireWorld.xz);
-    snowCol += vec3(1.1, 0.42, 0.14) * flick * exp(-dFire * 0.7) * 1.1;
+    snowCol += vec3(1.2, 0.46, 0.15) * flick * exp(-dFire * 0.5) * 1.3;
     col = mix(snowCol, sky, clamp(fog, 0.0, 1.0));
   }
 
-  // ---- Object 9 plume (billboarded at fireWorld) ----
+  // ---- Object 9: base silhouette + billowing plume (billboarded at fireWorld) ----
   vec2 lpFire = (uv - fp.xy) / fireScale;
   lpFire.y += 0.05;
-  col += plumeColor(lpFire, t, flick) * fireScale * 2.0;
-  col += embers(uv, fp.xy + vec2(0.0, 0.02), t) * fireScale;
+  if (abs(lpFire.x) < 2.6 && lpFire.y > -0.5 && lpFire.y < 3.6){
+    float bd = baseSil(lpFire);
+    float bMask = smoothstep(0.02, -0.012, bd);
+    col = mix(col, vec3(0.003, 0.0032, 0.0035), bMask);
+    float bRim = smoothstep(0.05, 0.0, abs(bd)) * (1.0 - bMask);
+    col += vec3(1.0, 0.5, 0.2) * bRim * flick * 0.5;
+    col += plumeColor(lpFire, t, flick) * fireScale * 2.0;
+  }
+  if (abs(uv.x - fp.x) < 0.35 && uv.y < fp.y + 0.3){
+    col += embers(uv, fp.xy + vec2(0.0, 0.02), t) * fireScale;
+  }
 
   // ---- Kharkovchanka, receding across the plateau ----
   float vz = mix(12.0, 52.0, smoothstep(0.0, 7.0, t));
