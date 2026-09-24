@@ -104,7 +104,7 @@ vec2 map(vec3 p){
   r = opU(r, sdKS23Detail(gp, clamp(uP[0], 0., 1.)));
 
   // ---- 23mm shells standing on the table ----
-  for (int i = 0; i < 5; i++){
+  for (int i = 0; i < 3; i++){
     float fi = float(i);
     vec3 sc = tc + vec3(0.34 + fi * 0.075, TABLE_TOP, 0.15 - fi * 0.02);
     vec3 sp = p - sc;
@@ -115,26 +115,24 @@ vec2 map(vec3 p){
   }
 
   // ---- lockers, left wall ----
-  for (int i = 0; i < 3; i++){
+  for (int i = 0; i < 2; i++){
     float fi = float(i);
-    vec3 lc = vec3(ROOM_L + 0.07, 1.0, -0.55 + fi * 0.85);
-    r = opU(r, sdLocker(p, lc, vec3(0.06, 0.95, 0.36), i == 1));
+    vec3 lc = vec3(ROOM_L + 0.07, 1.0, -0.35 + fi * 0.95);
+    r = opU(r, sdLocker(p, lc, vec3(0.06, 0.95, 0.40), i == 1));
   }
 
   // ---- weapon rack + crates, right wall ----
   vec3 rackC = vec3(ROOM_R - 0.05, 1.35, 0.15);
   r = opU(r, vec2(sdRoundBox(p - rackC, vec3(0.03, 0.85, 0.55), 0.01), M_WOOD));
-  // pegs + two leaning spare long-guns (silhouette only)
-  for (int i = 0; i < 2; i++){
-    float fi = float(i);
-    vec3 base = vec3(ROOM_R - 0.10, 0.05, -0.15 + fi * 0.5);
-    vec3 tip  = base + vec3(-0.22, 1.75, 0.05 - fi*0.1);
+  // one leaning spare long-gun (silhouette only)
+  {
+    vec3 base = vec3(ROOM_R - 0.10, 0.05, 0.05);
+    vec3 tip  = base + vec3(-0.22, 1.75, 0.0);
     r = opU(r, vec2(sdTaper(p, base, tip, 0.025, 0.018), M_GUNMETAL));
   }
   // crates stacked on floor
   r = opU(r, sdCrate(p, vec3(ROOM_R - 0.35, 0.19, 1.55), vec3(0.30, 0.19, 0.24)));
   r = opU(r, sdCrate(p, vec3(ROOM_R - 0.33, 0.19+0.40, 1.75), vec3(0.24, 0.16, 0.20)));
-  r = opU(r, sdCrate(p, vec3(ROOM_R - 0.36, 0.19, 2.05), vec3(0.28, 0.19, 0.22)));
 
   // ---- bulb + cord ----
   vec3 anchor = vec3(0.38, ROOM_CEIL, 0.62);
@@ -158,7 +156,7 @@ vec3 nrm(vec3 p){
 
 float calcAO(vec3 p, vec3 n){
   float occ = 0., sca = 1.0;
-  for (int i = 0; i < 3; i++){
+  for (int i = 0; i < 2; i++){
     float h = 0.025 + 0.07 * float(i);
     float d = map(p + n * h).x;
     occ += (h - d) * sca;
@@ -169,7 +167,7 @@ float calcAO(vec3 p, vec3 n){
 
 float shadow(vec3 ro, vec3 rd, float maxT){
   float res = 1.0, t = 0.06;
-  for (int i = 0; i < 11; i++){
+  for (int i = 0; i < 8; i++){
     float h = map(ro + rd * t).x;
     res = min(res, 8.0 * h / t);
     t += clamp(h, 0.04, 0.3);
@@ -290,7 +288,7 @@ vec3 render(vec2 fc){
 
   float d = 0.0; vec2 h;
   bool hitAny = false;
-  for (int i = 0; i < 90; i++){
+  for (int i = 0; i < 68; i++){
     vec3 p = ro + rd*d;
     h = map(p);
     if (h.x < 0.002 * max(d,1.0)) { hitAny = true; break; }

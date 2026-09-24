@@ -102,10 +102,10 @@ vec2 mapVehicle(vec3 p, vec3 vp){
 }
 bool vehicleHit(vec3 ro, vec3 rd, vec3 vp, out float dist, out float mat){
   float d = 0.3;
-  for (int i = 0; i < 64; i++){
+  for (int i = 0; i < 48; i++){
     vec3 p = ro + rd * d;
     vec2 h = mapVehicle(p, vp);
-    if (h.x < .003) { dist = d; mat = h.y; return true; }
+    if (h.x < .005) { dist = d; mat = h.y; return true; }
     d += h.x;
     if (d > 140.0) break;
   }
@@ -137,7 +137,7 @@ vec2 snowStreaks(vec2 uv, float t, float gust){
   float s = 0.0, br = 0.0;
   vec2 dir = SWIND;
   vec2 perp = vec2(-dir.y, dir.x);
-  const int NL = 4;
+  const int NL = 3;
   for (int i = 0; i < NL; i++){
     float fi = float(i) / float(NL - 1);           // 0 = farthest, 1 = nearest
     float scale = mix(85.0, 16.0, fi);              // far: tiny dense cells; near: big sparse cells
@@ -304,7 +304,7 @@ vec3 render(vec2 fc){
   if (nearBeam) {
     vec3 shaft = vec3(0.);
     float maxD = min(dist, 30.0);
-    const int NS = 6;
+    const int NS = 3;
     float stepL = maxD / float(NS);
     float o = hash21(fc);
     for (int i = 0; i < NS; i++){

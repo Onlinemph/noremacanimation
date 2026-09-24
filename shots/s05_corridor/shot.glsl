@@ -54,16 +54,18 @@ vec2 map(vec3 p){
     r = opU(r, vec2(smax(frame,-hole,.02), M_STEEL));
   }
 
-  // monster (bounded)
+  // monster (bounded). During the final face-reveal its animation time is held steady so the
+  // scare pose doesn't jerk out of frame between the handful of frames the flicker allows.
   {
     float mz = uP[1];
     vec3 mp = p - vec3(0., 0., mz);
     mp.xz = rot2(PI) * mp.xz; // faces back up the corridor toward camera (+Z local == -Z world)
     float scale = 1.0;
     vec3 msc = mp / scale;
+    float monT = uP[2] > 0.001 ? 12.16 : iTime;
     float bound = sdCapsule(msc, vec3(0.,.2,0.), vec3(0.,2.05,0.), 1.05);
     if (bound < .15){
-      vec2 mm = sdMonster(msc, iTime, .42, 0.0);
+      vec2 mm = sdMonster(msc, monT, .42, 0.0);
       mm.x *= scale;
       r = opU(r, mm);
     } else {
@@ -199,7 +201,7 @@ vec3 render(vec2 fc){
     vec3 lp = ro + vec3(.05,-.55,.15);
     vec3 L = lp - p; float dist = max(length(L), .5);
     float atten = closeUp / (1. + dist*dist*3.4) * (isMon ? 1.0 : 0.08);
-    col += alb * max(dot(n, L/dist),0.) * atten * ao * vec3(1.2,1.0,.8) * 4.4;
+    col += alb * max(dot(n, L/dist),0.) * atten * ao * vec3(1.2,1.0,.8) * 6.0;
   }
 
   // monster: keep it mostly in shadow — a rim from whatever light is behind it, face reads dark

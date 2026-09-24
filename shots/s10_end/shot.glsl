@@ -70,7 +70,7 @@ void plumeColor(vec2 lp, float t, float flick, out float smokeMask, out vec3 smo
 // sparks / embers rising from the fire (screen space, additive)
 vec3 embers(vec2 uv, vec2 anchor, float t){
   vec3 col = vec3(0.0);
-  for (int i = 0; i < 12; i++){
+  for (int i = 0; i < 8; i++){
     float fi = float(i);
     vec2 seed = vec2(fi * 12.9, fi * 3.7);
     float life = fract(t * 0.22 + hash21(seed));

@@ -489,7 +489,7 @@ function drawCard(ctx, card, ct, s, W, H, idx) {
 
 export default {
   duration: 18,
-  sceneScale: 0.8,
+  sceneScale: 0.62,
   post(t) {
     const base = {
       bar: 0.12, grain: 0.07, aberr: 0.0016, vignette: 0.95, bloom: 0.4,
