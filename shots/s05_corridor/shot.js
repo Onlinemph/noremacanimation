@@ -71,7 +71,7 @@ function closeUpFactor(t) {
 export default {
   duration: 14,
   fps: 24,
-  sceneScale: 0.5,
+  sceneScale: 0.42,
 
   params(t) {
     return [lightIntensity(t), monsterZ(t), closeUpFactor(t), camZ(t)];

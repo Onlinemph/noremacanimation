@@ -21,8 +21,8 @@ vec2 map(vec3 p){
   vec3 fp = vec3(p.x, p.y, fz);
   r = opU(r, vec2(sdBox(fp - vec3(0., ROOMH-.05, 0.), vec3(.45,.04,.5)), 22.0));
 
-  // toppled chair near z=3
-  {
+  // toppled chair near z=3 (cheap bounding gate first — skip the detail SDF far from it)
+  if (abs(p.z - 3.1) < 1.0 && abs(p.x + .85) < 1.0 && p.y < 1.0){
     vec3 cp = p - vec3(-.85, 0., 3.1);
     cp.xz = rot2(1.1) * cp.xz;
     float seat = sdBox(cp - vec3(0.,.22,0.), vec3(.22,.03,.22));
@@ -35,8 +35,8 @@ vec2 map(vec3 p){
     r = opU(r, vec2(min(min(seat,back),legs), M_GUNMETAL));
   }
 
-  // scattered papers on the floor near z=5
-  for (int i=0;i<4;i++){
+  // scattered papers on the floor near z=5 (same gate trick)
+  for (int i=0;i<2;i++){
     float fi = float(i);
     vec3 pp = p - vec3(hash11(fi*3.1)*1.6-.8, .004, 5.0 + hash11(fi*7.7)*1.5);
     pp.xz = rot2(hash11(fi*1.9)*6.28) * pp.xz;

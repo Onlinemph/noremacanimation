@@ -1,7 +1,7 @@
 export default {
   duration: 10,
   fps: 24,
-  sceneScale: 0.38,
+  sceneScale: 0.32,
   post(t) {
     const gust = Math.exp(-(((t - 2.0) / 1.4) ** 2)) + Math.exp(-(((t - 6.5) / 1.6) ** 2));
     return {
