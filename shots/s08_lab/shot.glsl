@@ -296,14 +296,14 @@ vec3 render(vec2 fc){
 
   vec3 ro, ta; float focal;
   if (t < 6.0){
-    ro = vec3(-0.55, 1.55, cz);
-    ta = vec3(TANK_X - 0.4, 1.25, cz + 2.0);
+    ro = vec3(-0.90, 1.55, cz);
+    ta = vec3(TANK_X + 0.3, 1.30, cz + 0.9);
     focal = 1.9;
   } else {
     // settle & push in on the last tank
     vec3 lastC = vec3(TANK_X, 1.3, tankZ(NTANK-1));
-    ro = mix(vec3(-0.55, 1.55, cz), lastC + vec3(-2.15, 0.05, -0.25), push);
-    ta = mix(vec3(TANK_X - 0.4, 1.25, cz + 2.0), lastC + vec3(0.2,0.05,0.), push);
+    ro = mix(vec3(-0.90, 1.55, cz), lastC + vec3(-2.0, 0.05, -0.35), push);
+    ta = mix(vec3(TANK_X + 0.3, 1.30, cz + 0.9), lastC + vec3(0.25,0.05,0.15), push);
     focal = mix(1.9, 2.1, push);
   }
 

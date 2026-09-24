@@ -200,8 +200,9 @@ vec3 render(vec2 fc){
     vec3 p = ro + rd * dist;
     vec3 n = hitVehicle ? vehicleNrm(p, vp) : terrainNrm(p);
     float mat = hitVehicle ? vMat : M_SNOW;
-    vec3 albedo = (mat == M_SNOW) ? mix(vec3(.55, .62, .78), vec3(.85, .89, .98), smoothstep(-.1, .35, n.y)) * (0.82 + 0.3 * fbm3lo(p * 5.0))
+    vec3 albedo = (mat == M_SNOW) ? mix(vec3(.42, .5, .68), vec3(.88, .91, .99), smoothstep(-.15, .4, n.y)) * (0.68 + 0.55 * fbm3lo(p * 6.0))
                                     : vehicleAlbedo(mat, p);
+    float sparkle = (mat == M_SNOW) ? pow(hash31(floor(p * 40.0)), 22.0) * 6.0 : 0.0;
     vec3 amb = (aurora(upDir, t) * 3.2 + vec3(.028, .034, .06)) * (0.55 + 0.45 * max(n.y, 0.0)) * (mat == M_SNOW ? 1.0 : .5);
     vec3 col3 = albedo * amb;
 
@@ -216,6 +217,7 @@ vec3 render(vec2 fc){
       // soft omnidirectional scatter: blowing snow throws headlight glow past the beam edge
       float scatter = dif * atten * 0.4;
       col3 += albedo * (lc + vec3(1.0, .8, .55) * scatter) + spec * cone * atten * 1.4;
+      col3 += sparkle * cone * atten * vec3(1.0, .92, .8);
     }
     if (mat == V_LAMP) col3 = vec3(1.0, .86, .55) * 6.0;
     col = col3;

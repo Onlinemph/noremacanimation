@@ -284,7 +284,7 @@ function drawCard(ctx, card, ct, s, W, H, idx) {
   ctx.fillText(card.ru, tx, ty0);
   ctx.font = `${Math.round(24 * s)}px "Oswald"`;
   ctx.fillText(card.en.toUpperCase(), tx, ty0 + 40 * s);
-  ctx.font = `${Math.round(19 * s)}px "PT Mono"`;
+  ctx.font = `${Math.round(17 * s)}px "PT Mono"`;
   ctx.fillStyle = '#453a24';
   ctx.fillText(card.spec, tx, ty0 + 78 * s);
   if (card.extra) ctx.fillText(card.extra, tx, ty0 + 104 * s);
