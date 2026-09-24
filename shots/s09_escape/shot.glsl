@@ -365,7 +365,7 @@ vec3 render(vec2 fc){
       for (int i = 0; i < 4; i++){
         float lz = 2.0 + float(i) * 6.0;
         for (int s = 0; s < 2; s++){
-          float sg = s == 0. ? -1. : 1.;
+          float sg = s == 0 ? -1. : 1.;
           vec3 lc = vec3(sg*(ROOM_W-0.6), 2.85, lz);
           float ld = length(lc-p);
           col += vec3(1.0,.5,.12) * (1.0/(1.0+ld*ld*0.5)) * 0.55 * max(dot(n, normalize(lc-p)),0.0);

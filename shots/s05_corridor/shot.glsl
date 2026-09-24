@@ -224,6 +224,7 @@ vec3 render(vec2 fc){
   }
   col = mix(col, hazeCol, clamp(hazeAmt, 0., finalPhase ? 1.0 : 0.9));
   if (finalPhase && !isMon) col = min(col, vec3(0.02)); // background stays flat black behind the reveal
+  if (finalPhase) return col * 20.0;
 
   return col;
 }

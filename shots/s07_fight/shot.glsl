@@ -270,6 +270,14 @@ vec3 shade(vec3 p, vec3 n, vec3 rd, float m, float seed){
     float d3 = length(mpos - p);
     lit += vec3(1., .82, .55) * mf * max(dot(n, L3), 0.) * 9. / (1. + d3 * d3 * .6);
     if (isGun) lit += vec3(1., .8, .55) * mf * 1.2;
+    // omnidirectional falloff so anything close (esp. point-blank) is unmistakably
+    // lit even where the surface normal glances away from the muzzle
+    lit += vec3(1., .7, .5) * mf * 2.2 / (1. + d3 * d3 * 1.1);
+  }
+  float pb = uP[3];
+  if (pb > .01){
+    // point-blank kill: the blast lights flesh/cloth/gore from everywhere at once
+    lit += vec3(1., .55, .4) * pb * 2.4;
   }
 
   // AK / PPSh strobing muzzle flashes from off-screen left
@@ -290,9 +298,9 @@ vec3 shade(vec3 p, vec3 n, vec3 rd, float m, float seed){
     vec3 L5 = normalize(flarePos - p);
     float d5 = length(flarePos - p);
     float pls = .75 + .25 * sin(iTime * 5.0);
-    float falloff = 1. / (1. + d5 * d5 * .55);
-    lit += vec3(1., .10, .30) * (fp > .001 && fp < 1. ? 1.4 : fg * pls) * max(dot(n, L5), 0.) * 12. * falloff;
-    if (isGun) lit += vec3(1., .12, .32) * fg * rim * 1.2 * falloff;
+    float falloff = 1. / (1. + d5 * d5 * 1.3);
+    lit += vec3(1., .10, .30) * (fp > .001 && fp < 1. ? 1.4 : fg * pls) * max(dot(n, L5), 0.) * 7. * falloff;
+    if (isGun) lit += vec3(1., .12, .32) * fg * rim * 1.0 * falloff;
   }
 
   vec3 col = lit * ao;
@@ -331,7 +339,7 @@ vec3 volumetric(vec3 ro, vec3 rd, float tmax){
     if (fg > .001 || (fp > .001 && fp < 1.)){
       float d5 = length(flarePos - p);
       float k = fp > .001 && fp < 1. ? 1.0 : fg;
-      acc += vec3(1., .10, .28) * k * fog * .09 / (1. + d5 * d5 * .35);
+      acc += vec3(1., .10, .28) * k * fog * .045 / (1. + d5 * d5 * .9);
     }
   }
   return acc * (min(tmax,16.0) / steps);
@@ -364,7 +372,7 @@ vec3 render(vec2 fc){
   }
   vec3 col;
   if (d > 24.){
-    col = vec3(0.02, 0.015, 0.02) * (1.0 + uP[8]*4.0);
+    col = vec3(0.02, 0.015, 0.02) * (1.0 + uP[8]*1.2);
   } else {
     vec3 p = ro + rd * d, n = nrm(p);
     float seed = 0.;
