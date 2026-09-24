@@ -4,6 +4,7 @@
     python3 render/make_film.py            # render what's stale, then assemble build/OBJECT9.mp4
     python3 render/make_film.py --force    # re-render every shot
     python3 render/make_film.py --only s05_corridor,s07_fight
+    python3 render/make_film.py --shared   # also treat shared shader/engine edits as making every shot stale
 """
 import json, os, subprocess, sys, time
 
@@ -25,7 +26,7 @@ def mtime(p):
 for shot in tl['shots']:
     name = shot['name']
     out = f'build/shots/{name}.mp4'
-    srcs = [f'shots/{name}/shot.glsl', f'shots/{name}/shot.js'] + shared
+    srcs = [f'shots/{name}/shot.glsl', f'shots/{name}/shot.js'] + (shared if '--shared' in sys.argv else [])
     stale = force or mtime(out) < max(mtime(s) for s in srcs)
     if only is not None:
         stale = name in only
