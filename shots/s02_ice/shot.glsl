@@ -239,7 +239,7 @@ vec3 lampsAt(vec3 x, vec3 n, vec3 rd){
   vec3 tc = (gTL0 + gTL1) * .5;
   vec3 dt = tc - x; float d2 = dot(dt, dt); vec3 Lt = dt * inversesqrt(d2);
   float back = smoothstep(-.2, .5, dot(-Lt, -gFW));
-  acc += TLCOL * 1.6 * back / (d2 + 1.) * mix(max(dot(n, Lt), 0.), .25, vol);
+  acc += TLCOL * 1.1 * back / (d2 + 1.5) * mix(max(dot(n, Lt), 0.) * .8 + .2, .25, vol);
   return acc;
 }
 
@@ -385,7 +385,7 @@ void setupCam(float t){
   gFw = f;
   gRt = normalize(cross(gFw, vec3(0., 1., 0.)));   // screen right (right-handed world)
   gUp = cross(gRt, gFw);
-  gFocal = mix(2.5, 1.05, smoothstep(.5, 9.6, t));
+  gFocal = mix(2.6, 1.05, smoothstep(4., 9.7, t));
 }
 vec3 camDir(vec2 uv){ return normalize(uv.x * gRt + uv.y * gUp + gFocal * gFw); }
 vec3 proj(vec3 wp){ vec3 r = wp - gRo; float z = dot(r, gFw); return vec3(vec2(dot(r, gRt), dot(r, gUp)) / max(z, .001) * gFocal, z); }
@@ -433,7 +433,7 @@ vec3 render(vec2 fc){
     // fresh track ruts behind the vehicle
     vec3 pl = toLoc(p - gV);
     float behind = step(pl.z, -2.2) * exp(max(-pl.z - 2.2, 0.) * -.03);
-    float rut = smoothstep(.36, .18, abs(abs(pl.x) - 1.08)) * behind;
+    float rut = smoothstep(.45, .1, abs(abs(pl.x) - 1.08)) * behind * (.6 + .4 * noise2(p.xz * 2.));
     float rutEdge = smoothstep(.1, .0, abs(abs(abs(pl.x) - 1.08) - .36)) * behind;
     n = normalize(n + vec3(0., 0., 0.) + toWld(vec3(sign(pl.x) * sign(abs(pl.x) - 1.08) * .5 * rutEdge, 0., 0.)));
     vec3 alb = vec3(.78, .83, .9) * (.9 + .15 * h0);
@@ -441,8 +441,8 @@ vec3 render(vec2 fc){
     float foot = sdBox2(pl.xz, vec2(1.35, 2.6));
     float occ = mix(.25, 1., smoothstep(-.3, 1.2, foot));
     vec3 E = SKYAMB * (1.2 + .5 * smoothstep(.35, .7, h0)) * occ;
-    E += lampsAt(p, n, rd) * (1. - .5 * rut);
-    col = alb * E * (1. - .35 * rut);
+    E += lampsAt(p, n, rd) * (1. - .2 * rut);
+    col = alb * E * (1. - .15 * rut);
     // glitter in the beams
     float g = hash21(floor(p.xz * 40.));
     if (g > .996) col += lampsAt(p + vec3(0., .05, 0.), vec3(0., 1., 0.), rd) * .5 * hash11(g * 17. + floor(t * 12.)) * smoothstep(25., 3., tg);

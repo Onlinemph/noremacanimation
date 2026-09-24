@@ -33,7 +33,7 @@ vec3 skyCol(vec3 rd, float t, float gust){
 }
 
 // ============================================================ beacon ===
-const vec3 MAST = vec3(8.5, 0., 82.);
+const vec3 MAST = vec3(11., 0., 68.);
 const float MAST_H = 23.;
 const vec3 BCOL = vec3(1., .045, .015);
 vec3 gB0, gB1; float gBI;
@@ -249,7 +249,7 @@ vec3 lampsAt(vec3 x, vec3 n, vec3 rd){
   vec3 tc = (gTL0 + gTL1) * .5;
   vec3 dt = tc - x; float d2 = dot(dt, dt); vec3 Lt = dt * inversesqrt(d2);
   float back = smoothstep(-.2, .5, dot(-Lt, -gFW));
-  acc += TLCOL * 1.6 * back / (d2 + 1.) * mix(max(dot(n, Lt), 0.), .25, vol);
+  acc += TLCOL * 1.1 * back / (d2 + 1.5) * mix(max(dot(n, Lt), 0.) * .8 + .2, .25, vol);
   return acc;
 }
 
@@ -381,13 +381,13 @@ void vehicleState(float t){
 vec3 gRo, gFw, gRt, gUp; float gFocal;
 void setupCam(float t){
   float k = smoothstep(-1., 11., t);
-  gRo = mix(vec3(6.4, 2.0, -13.5), vec3(5.4, 1.85, -10.0), k);
-  vec3 ta = mix(vec3(-.2, 3.0, 26.), vec3(.6, 2.9, 26.), k);
+  gRo = mix(vec3(8.6, 2.1, -12.8), vec3(7.3, 1.9, -9.6), k);
+  vec3 ta = mix(vec3(-2.4, 4.4, 26.), vec3(-3.9, 4.0, 26.), k);
   ta += vec3(noise2(vec2(t * .5, 1.)) - .5, noise2(vec2(t * .43, 7.)) - .5, 0.) * .35;   // handheld
   gFw = normalize(ta - gRo);
   gRt = normalize(cross(gFw, vec3(0., 1., 0.)));   // screen right = world -X when looking down +Z
   gUp = cross(gRt, gFw);
-  gFocal = mix(1.75, 2.05, k);
+  gFocal = mix(1.75, 1.95, k);
 }
 vec3 camDir(vec2 uv){ return normalize(uv.x * gRt + uv.y * gUp + gFocal * gFw); }
 vec3 proj(vec3 wp){ vec3 r = wp - gRo; float z = dot(r, gFw); return vec3(vec2(dot(r, gRt), dot(r, gUp)) / max(z, .001) * gFocal, z); }
@@ -403,9 +403,9 @@ const float PX = 1.0, PZ = 26.0;           // portal center x, front face z
 #define MS_POLE 26.
 #define MS_LAMP 27.
 
-const vec3 MODA = vec3(15., 3.55, 33.);    // module A center, half length 8.5, yaw MODA_A
-const vec3 MODB = vec3(25., 3.7, 58.);     // module B center, half length 9, yaw MODB_A
-const float MODA_A = 1.25, MODB_A = 1.45;
+const vec3 MODA = vec3(12., 3.55, 43.);    // module A center, half length 8.5, yaw MODA_A
+const vec3 MODB = vec3(16., 3.7, 61.);     // module B center, half length 9, yaw MODB_A
+const float MODA_A = 1.2, MODB_A = 1.35;
 vec3 modLocal(vec3 p, vec3 c, float a){ vec3 q = p - c; q.xz = rot2(a) * q.xz; return q; }
 const vec3 POST = vec3(-6.2, 0., 22.6);
 
@@ -415,7 +415,7 @@ float groundH(vec2 xz){
   vec2 d = xz - vec2(PX, PZ + 6.5);
   float dx = abs(xz.x - PX);
   if (abs(d.x) < 30. && abs(d.y) < 24.){
-    float mound = 10.5 * exp(-d.x * d.x / 110. - d.y * d.y / 80.);
+    float mound = 10. * exp(-d.x * d.x / 75. - d.y * d.y / 80.);
     float cut = smoothstep(PZ + .9, PZ + 4.5, xz.y);   // keep the approach and the door recess clear
     mound *= mix(1., cut, smoothstep(6.9, 4.5, dx));
     h += mound;
@@ -498,7 +498,7 @@ float moduleSDF(vec3 p, vec3 c, float hl, float a, out float m){
   vec3 q = modLocal(p, c, a);
   float body = sdRoundBox(q, vec3(1.75, 1.45, hl), .35);
   // corrugated skin: ribs around the section
-  if (body < .12) body -= .035 * smoothstep(.2, .9, cos(q.z * 17.95));
+  if (body < .12) body -= .05 * smoothstep(.0, .9, cos(q.z * 12.6));
   m = MS_MOD;
   // stilts every 3 m, both sides
   vec3 s = q; s.x = abs(s.x) - 1.2;
@@ -545,7 +545,7 @@ float drumSDF(vec3 p){
   return d;
 }
 
-const vec3 BB_MIN = vec3(-26., -1., 10.), BB_MAX = vec3(30., 9.5, 72.);
+const vec3 BB_MIN = vec3(-26., -1., 10.), BB_MAX = vec3(30., 11., 72.);
 
 vec2 mapBase(vec3 p, bool ground){
   // the drift rises steeply behind the portal: march it more carefully there
@@ -613,7 +613,7 @@ float lampShadow(vec3 p, vec3 lp){
     vec3 x = p + d * t;
     if (x.z < BB_MIN.z) break;
     float h = mapBase(x, false).x;
-    res = min(res, 10. * h / t);
+    res = min(res, 14. * h / t);
     t += clamp(h, .12, 2.);
     if (res < .02 || t > L) break;
   }
@@ -641,7 +641,7 @@ vec3 shadeBase(vec3 p, vec3 rd, float tb, float mat, float t, float gust, bool i
     alb *= 1. - .35 * rut;
   } else if (mat == MS_CONC){
     float n1 = fbm3lo(p * vec3(1.3, .6, 1.3));
-    alb = vec3(.36, .35, .33) * (.6 + .6 * n1);
+    alb = vec3(.3, .29, .275) * (.6 + .6 * n1);
     // water/rust stains running down from the lintel
     float streak = smoothstep(.55, .8, noise2(vec2(p.x * 3.1, p.y * .25))) * smoothstep(5.2, 2.5, p.y);
     alb *= 1. - .45 * streak;
@@ -655,14 +655,14 @@ vec3 shadeBase(vec3 p, vec3 rd, float tb, float mat, float t, float gust, bool i
     }
     frost = smoothstep(.45, .75, fbm3lo(p * 2.3)) * .6 + .5 * smoothstep(.3, .9, n.y);
   } else if (mat == MS_DOOR){
-    alb = vec3(.13, .16, .13) * (.7 + .5 * fbm3lo(p * 2.));
-    float rust = smoothstep(.55, .75, noise3(vec3(p.x * 4., p.y * .8, p.z * 4.))) * smoothstep(.6, .0, fract(p.y * .9));
-    alb = mix(alb, vec3(.2, .08, .03), rust * .8);
-    // painted warning stripes near the bottom, worn
-    float stripes = step(.5, fract((p.x + p.y) * 1.6)) * step(p.y, .55) * step(.4, noise2(p.xy * 6.));
-    alb = mix(alb, vec3(.35, .28, .05), stripes * .7);
+    // Soviet green-grey paint, rust bleeding down from the dogs and hinges, worn hazard stripes
+    alb = vec3(.1, .125, .1) * (.8 + .35 * noise2(p.xy * 2.3));
+    float rust = smoothstep(.55, .8, noise2(vec2(p.x * 5., p.y * .35 + 3.))) * smoothstep(.2, 2.8, p.y);
+    alb = mix(alb, vec3(.19, .085, .035), rust * .75);
+    float stripes = step(.5, fract((p.x + p.y) * 1.4)) * step(p.y, .5) * smoothstep(.35, .6, noise2(p.xy * 2.));
+    alb = mix(alb, vec3(.4, .32, .06), stripes * .7);
     spec = .25;
-    frost = smoothstep(.5, .8, fbm3lo(p * 3.)) * .5;
+    frost = smoothstep(.6, .85, fbm3lo(p * 1.4)) * .25 + .5 * smoothstep(.5, .9, n.y);
   } else if (mat == MS_DSTEEL){
     alb = vec3(.07, .075, .075) * (.7 + .6 * noise3(p * 9.));
     alb = mix(alb, vec3(.18, .07, .03), smoothstep(.5, .8, noise3(p * 5.)) * .7);
@@ -675,7 +675,7 @@ vec3 shadeBase(vec3 p, vec3 rd, float tb, float mat, float t, float gust, bool i
     vec3 q = length(p.xz - MODA.xz) < 11. ? modLocal(p, MODA, MODA_A) : modLocal(p, MODB, MODB_A);
     vec3 nq = n; nq.xz = rot2(length(p.xz - MODA.xz) < 11. ? MODA_A : MODB_A) * nq.xz;
     if (abs(nq.x) > .7 && abs(q.y - .25) < .38 && abs(mod(q.z + 1.5, 3.) - 1.5) < .38) { alb = vec3(.012, .014, .018); spec = .6; }
-    frost = .6 * smoothstep(.5, .9, n.y) + .3 * smoothstep(.55, .85, noise3(p * 1.7));
+    frost = .9 * smoothstep(.3, .8, n.y) + .3 * smoothstep(.55, .85, noise3(p * 1.7));
     spec = max(spec, .15);
   } else if (mat == MS_DRUM){
     float id = floor(p.x * .7 + p.z * .3);

@@ -523,10 +523,10 @@ vec3 tankComposite(int i, vec3 ro, vec3 rd, float t0, float t1, float tOp, vec3 
     vec3 q = ro + rd * ts - c;
     float liquid = step(q.y, LEVEL + .01 * sin(q.x * 20. + iTime * 2.));
     float hgt = q.y - TY0;
-    float lamp = exp(-hgt * 1.3) * 1.3 + .35;
+    float lamp = exp(-hgt * 1.6) * 1.4 + .12;
     float murk = .5 + .9 * noise3(q * vec3(3., 1.6, 3.) + vec3(0., -iTime * .12, float(i) * 3.));
     float rad = 1. - .4 * length(q.xz) / TR;
-    float em = liquid * lamp * murk * rad * I * .22 + (1. - liquid) * .015 * I;
+    float em = liquid * lamp * murk * rad * I * .13 + (1. - liquid) * .015 * I;
     float sig = liquid * (.55 + .6 * murk) + (1. - liquid) * .05;
     acc += T * em * seg;
     T *= exp(-sig * seg);
@@ -541,10 +541,10 @@ vec3 tankComposite(int i, vec3 ro, vec3 rd, float t0, float t1, float tOp, vec3 
     vec3 n = fn;
     float sc; vec3 m = figSpace(i, p, sc);
     vec2 hm = vec2(0., fmat);
-    vec3 alb = monsterAlbedo(hm.y, m) * .5;
+    vec3 alb = monsterAlbedo(hm.y, m) * .35;
     vec3 q = p - c;
     // light: glow from the lamp below and the surrounding liquid (wrap)
-    float below = max(dot(n, normalize(vec3(-q.x, -1.2, -q.z))) * .5 + .5, 0.);
+    float below = max(dot(n, normalize(vec3(-q.x, -1.2, -q.z))), 0.);
     float lampA = exp(-(q.y - TY0) * 1.5) * 1.6 + .08;
     vec3 fc = alb * GREEN * I * (below * below * lampA);
     // rim from the glow behind the figure
@@ -564,8 +564,9 @@ vec3 tankComposite(int i, vec3 ro, vec3 rd, float t0, float t1, float tOp, vec3 
       vec3 pr = ro + rd * t1 - c;
       float yr = pr.y - TY0;
       float g = exp(-yr * 2.2) * 1.5 + .06;
-      g *= .45 + .9 * fbm3lo(pr * vec3(5., 1.2, 5.) + vec3(0., -iTime * .05, float(i)));
-      g *= 1. - .6 * smoothstep(.55, .7, noise2(vec2(atan(pr.z, pr.x) * 9., pr.y * 1.5 + float(i))));  // algae streaks
+      g *= .55 + .6 * fbm3lo(pr * vec3(5., 1.2, 5.) + vec3(0., -iTime * .05, float(i)));
+      g *= .65 + .35 * smoothstep(.3, .6, noise3(pr * 2.2 + vec3(float(i) * 5., iTime * .03, 0.)));   // dark murk clouds
+      g *= 1. - .3 * smoothstep(.55, .7, noise2(vec2(atan(pr.z, pr.x) * 9., pr.y * 1.5 + float(i))));  // algae streaks
       g *= step(pr.y, LEVEL) + .15;
       col += T * mix(GREEN, vec3(.6, .8, .2), smoothstep(.3, 1.4, yr)) * I * g * .6;
       col += T * behind * .15;
@@ -579,7 +580,7 @@ vec3 tankComposite(int i, vec3 ro, vec3 rd, float t0, float t1, float tOp, vec3 
       vec3 pl = ro + rd * tl - c;
       float rr = length(pl.xz) / TR;
       float under = step(ro.y, LEVEL);
-      col += GREEN * I * (.25 + .9 * pow(rr, 8.)) * .9 * under * (.5 + .5 * noise3(pl * 12. + iTime));
+      col += GREEN * I * (.07 + .7 * pow(rr, 10.)) * .7 * under * (.5 + .5 * noise3(pl * 12. + iTime));
     }
   }
   float ye = pe.y - c.y;

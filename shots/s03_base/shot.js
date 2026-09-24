@@ -99,13 +99,13 @@ export default {
     ctx.shadowBlur = 22 * s;
     ctx.fillStyle = 'rgba(230,224,212,0.95)';
     ctx.font = `${Math.round(78 * s)}px "Russo One"`;
-    ctx.fillText('ОБЪЕКТ 9', cx, H * 0.46);
+    ctx.fillText('ОБЪЕКТ 9', cx, H * 0.27);
     ctx.restore();
     ctx.shadowColor = 'rgba(0,0,0,0.7)';
     ctx.shadowBlur = 4 * s;
     ctx.fillStyle = 'rgba(210,214,220,0.85)';
     ctx.font = `${Math.round(20 * s)}px "Oswald"`;
-    ctx.fillText('O B J E C T   9', cx, H * 0.46 + 44 * s);
+    ctx.fillText('O B J E C T   9', cx, H * 0.27 + 44 * s);
     ctx.restore();
   },
 };
