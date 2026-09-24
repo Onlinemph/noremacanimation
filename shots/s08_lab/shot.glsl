@@ -43,14 +43,14 @@ vec3 camEnd(){ return vec3(-.42, 1.52, 4.95); }
 void setupCamera(){
   float t = iTime;
   float s = clamp(t / 8., 0., 1.);
-  vec3 ro0 = vec3(-1.45, 1.66, mix(-1.35, 3.3, s));
-  vec3 ta0 = ro0 + vec3(3., -.42, 1.05);
+  vec3 ro0 = vec3(-2.0, 1.5, mix(-1.5, 3.2, s));
+  vec3 ta0 = ro0 + vec3(3., -.12, 1.0);
   float k = smoothstep(6.6, 9.6, t);
   vec3 ro1 = camEnd() + vec3(0., 0., .0) + (camEnd() - tankC(3) - vec3(0., 1.52, 0.)) * .03 * (t - 8.);
   vec3 ta1 = tankC(3) + vec3(0., 1.5, 0.);
   gRo = mix(ro0, ro1, k);
   gTa = mix(ta0, ta1, k);
-  gFocal = mix(1.35, 1.75, k);
+  gFocal = mix(1.15, 1.7, k);
   // burst: operator staggers back
   if (t > T_BURST){
     float b = t - T_BURST;
@@ -89,7 +89,8 @@ vec3 figSpace(int i, vec3 p, out float sc){
   vec3 c = tankC(i);
   vec3 q = p - c;
   float yaw = fi * 2.1 + .9 + .12 * sin(t * .21 + fi);
-  float curl = .55 + .12 * sin(fi * 3.) + .05 * sin(t * .4 + fi);
+  float curl = (i == 0 ? .95 : (i == 1 ? .45 : (i == 2 ? .7 : .6))) + .05 * sin(t * .4 + fi);
+  float tiltZ = i == 1 ? .35 : (i == 2 ? -.25 : .12);
   float lift = .58 + .05 * sin(t * .45 + fi * 2.);
   vec3 off = vec3(.05 * sin(t * .3 + fi), 0., .05 * cos(t * .27 + fi * 3.));
   gFigT = t * .35 + fi * 7. + .0173;
@@ -110,7 +111,7 @@ vec3 figSpace(int i, vec3 p, out float sc){
   q = rotY(q, yaw);
   q.y -= .95 * sc;
   q.yz *= rot2(-curl);
-  q.xy *= rot2(.15 * sin(fi * 5.));
+  q.xy *= rot2(tiltZ);
   q.y += .95 * sc;
   return q / sc;
 }
@@ -146,6 +147,14 @@ vec2 figMap(int i, vec3 p){
   vec2 r;
   if (b > .12) r = vec2(b * sc, 0.);
   else { r = sdMonster(m, gFigT, fract(float(i) * .37 + .11), 0.); r.x *= sc; }
+  {
+    vec3 c = tankC(i);
+    vec3 nk = c + vec3(.05 * sin(iTime * .3 + float(i)), 1.75, .05 * cos(iTime * .27 + float(i) * 3.));
+    float hose = sdTaper(p, c + vec3(.12, TY1, .05), mix(c + vec3(.12, TY1, .05), nk, .5) + vec3(.05, -.05, 0.), .018, .016);
+    hose = min(hose, sdTaper(p, mix(c + vec3(.12, TY1, .05), nk, .5) + vec3(.05, -.05, 0.), nk, .016, .014));
+    hose = min(hose, sdTaper(p, c + vec3(-.15, TY1, -.1), nk + vec3(-.05, -.1, 0.), .012, .01));
+    r = opU(r, vec2(hose, M_CLOTH + .5));
+  }
   if (i == 3){
     float press = smoothstep(8.35, 8.9, iTime);
     if (iTime > 8.0) r = opU(r, vec2(sdHand(p, press), M_SKIN));
@@ -317,7 +326,7 @@ vec3 lightAll(vec3 p, vec3 n, vec3 rd, vec3 alb, float spk, float gloss){
     vec3 pc = vec3(c.x, clamp(p.y, .75, 2.05), c.z);
     vec3 L = pc - p; float d = length(L); L /= d;
     float dd = max(d - TR * .5, 0.);
-    float at = tankI(i) * 1.7 / (1. + 2.4 * dd * dd);
+    float at = tankI(i) * 1.1 / (1. + 5. * dd * dd);
     // caps block light that would leave the tank steeply up/down
     at *= smoothstep(-.1, .35, 1. - abs(L.y));
     float ndl = max(dot(n, L), 0.);
@@ -388,6 +397,12 @@ vec3 shadeScene(vec2 h, vec3 p, vec3 n, vec3 rd){
     spk = (1. - rust) * .9; gloss = 60.;
     // lamp grate on top of the bottom cap, inside the tank
     vec3 q = p - tankC(int(clamp(floor((p.z - TZ0) / TSP + .5), 0., 3.)));
+    {
+      int ti = int(clamp(floor((p.z - TZ0) / TSP + .5), 0., 3.));
+      float dg = min(abs(q.y - TY0), abs(q.y - TY1)) + max(length(q.xz) - TR, 0.) * .5;
+      float lit = exp(-dg * 14.) * (q.y < 1.4 ? 1. : .35);
+      if (!(ti == 3 && iTime > T_BURST)) emi += GREEN * tankI(ti) * lit * .25 * alb * 4.;
+    }
     if (q.y > TY0 - .01 && q.y < TY0 + .02 && length(q.xz) < TR){
       float grate = step(.3, abs(fract(q.x * 14.) - .5)) * step(.3, abs(fract(q.z * 14.) - .5));
       int ti = int(clamp(floor((p.z - TZ0) / TSP + .5), 0., 3.));
@@ -501,8 +516,8 @@ vec3 tankComposite(int i, vec3 ro, vec3 rd, float t0, float t1, float tOp, vec3 
     float lamp = exp(-hgt * 1.3) * 1.3 + .35;
     float murk = .5 + .9 * noise3(q * vec3(3., 1.6, 3.) + vec3(0., -iTime * .12, float(i) * 3.));
     float rad = 1. - .4 * length(q.xz) / TR;
-    float em = liquid * lamp * murk * rad * I * .85 + (1. - liquid) * .05 * I;
-    float sig = liquid * (1.5 + .8 * murk) + (1. - liquid) * .1;
+    float em = liquid * lamp * murk * rad * I * .22 + (1. - liquid) * .015 * I;
+    float sig = liquid * (.55 + .6 * murk) + (1. - liquid) * .05;
     acc += T * em * seg;
     T *= exp(-sig * seg);
   }
@@ -516,7 +531,7 @@ vec3 tankComposite(int i, vec3 ro, vec3 rd, float t0, float t1, float tOp, vec3 
     vec3 n = figNrm(i, p);
     float sc; vec3 m = figSpace(i, p, sc);
     vec2 hm = figMap(i, p);
-    vec3 alb = monsterAlbedo(hm.y, m) * .8;
+    vec3 alb = monsterAlbedo(hm.y, m) * .5;
     vec3 q = p - c;
     // light: glow from the lamp below and the surrounding liquid (wrap)
     float below = max(dot(n, normalize(vec3(-q.x, -1.2, -q.z))) * .5 + .5, 0.);
@@ -524,7 +539,7 @@ vec3 tankComposite(int i, vec3 ro, vec3 rd, float t0, float t1, float tOp, vec3 
     vec3 fc = alb * GREEN * I * (below * below * lampA);
     // rim from the glow behind the figure
     float rim = pow(1. - max(dot(n, -rd), 0.), 3.);
-    fc += GREEN * I * rim * .35 * (.4 + lampA);
+    fc += GREEN * I * rim * .15 * (.3 + lampA);
     // wet spec from the lamp and from the flashlight
     vec3 Lb = normalize(vec3(-q.x * .3, -1., -q.z * .3));
     float sp = pow(max(dot(reflect(rd, n), Lb), 0.), 24.) * monsterSpec(hm.y);
@@ -534,7 +549,17 @@ vec3 tankComposite(int i, vec3 ro, vec3 rd, float t0, float t1, float tOp, vec3 
     fc += vec3(.72, .84, 1.) * cone * (alb * max(dot(n, Lf), 0.) * .6 + pow(max(dot(reflect(rd, n), Lf), 0.), 40.) * monsterSpec(hm.y) * 2.);
     col += T * fc;
   } else {
-    col += T * behind * .6;
+    // frosted rear glass lit from the lamp below: the lightbox the figure is seen against
+    if (t1 < tOp + .02){
+      vec3 pr = ro + rd * t1 - c;
+      float yr = pr.y - TY0;
+      float g = exp(-yr * 2.2) * 1.5 + .06;
+      g *= .45 + .9 * fbm3lo(pr * vec3(5., 1.2, 5.) + vec3(0., -iTime * .05, float(i)));
+      g *= 1. - .6 * smoothstep(.55, .7, noise2(vec2(atan(pr.z, pr.x) * 9., pr.y * 1.5 + float(i))));  // algae streaks
+      g *= step(pr.y, LEVEL) + .15;
+      col += T * mix(GREEN, vec3(.6, .8, .2), smoothstep(.3, 1.4, yr)) * I * g * .6;
+      col += T * behind * .15;
+    } else col += T * behind * .7;
   }
 
   // --- meniscus + underside of the surface (total internal reflection band)
@@ -586,12 +611,12 @@ vec3 tankComposite(int i, vec3 ro, vec3 rd, float t0, float t1, float tOp, vec3 
   float cond = smoothstep(.55, .75, noise3(pe * vec3(25., 8., 25.)));
   col *= 1. - .3 * grime * (1. - F);
   col += GREEN * I * .05 * cond;
-  col += GREEN * I * pow(1. - cosi, 3.) * .9;                         // thick glass at grazing angles glows
+  col += GREEN * I * pow(1. - cosi, 4.) * .3;                         // thick glass at grazing angles glows
   vec3 R = reflect(rd, ne);
   // flashlight glint on the glass
   vec3 Lf = normalize(gFlPos - pe);
   float cone = smoothstep(.935, .985, dot(-Lf, gFlDir));
-  col += vec3(.8, .9, 1.) * cone * pow(max(dot(R, Lf), 0.), 180.) * 25.;
+  col += vec3(.8, .9, 1.) * cone * pow(max(dot(R, Lf), 0.), 400.) * 6.;
   col += vec3(.8, .9, 1.) * cone * F * .25;
   // neighbours reflected as vertical streaks
   for (int j = 0; j < 4; j++){
@@ -698,7 +723,7 @@ vec3 render(vec2 fc){
     fog += GREEN * tankI(i) * scatterPoint(ro, rd, c, tmax, 2.2);
     fog += GREEN * tankI(i) * .5 * scatterPoint(ro, rd, tankC(i) + vec3(0., .25, 0.), tmax, 5.);
   }
-  col += fog * .018 * (.7 + .6 * noise3(ro + rd * 2. + vec3(0., 0., iTime * .1)));
+  col += fog * .009 * (.7 + .6 * noise3(ro + rd * 2. + vec3(0., 0., iTime * .1)));
   vec3 beam = vec3(0.);
   for (int i = 0; i < 6; i++){
     float ts = (float(i) + dither) / 6. * min(tmax, 6.);
@@ -709,6 +734,6 @@ vec3 render(vec2 fc){
   }
   col += beam * min(tmax, 6.) / 6. * .05;
 
-  col += burstFX(ro, rd, d);
+  return col;
   return col;
 }

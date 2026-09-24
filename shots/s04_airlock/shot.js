@@ -1,102 +1,73 @@
-// s04_airlock — 10s. Blast door slams shut behind the team, power dies, red beacon kicks in.
-const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
+// s04_airlock — inside the entrance airlock looking back at the open blast door.
+//  0-4    door open onto the snow trench, wind and snow pour in, two torches sweep
+//  4-6    the door swings shut on its own, grinding
+//  6.0    SLAM. three locking dogs shoot home at 6.1 / 6.3 / 6.5
+//  7.0    the bulkhead lamp dies. torches only
+//  8.0    red emergency beacon starts rotating
+//  8.3-9.8  "THE DOOR SEALED BEHIND US."
+
+const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
 const smooth = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
-const mix = (a, b, t) => a + (b - a) * t;
+function hash(n) { const s = Math.sin(n * 91.7) * 43758.5453; return s - Math.floor(s); }
 
 function doorAngle(t) {
-  const OPEN = 1.3;
-  if (t < 4.0) return OPEN + Math.sin(t * 3.1) * 0.01; // resting open, tiny sway
-  if (t < 6.0) {
-    const e = smooth(4.0, 5.85, t);
-    let a = mix(OPEN, 0.0, e);
-    a += Math.sin(t * 45.0) * 0.02 * (1 - e); // grinding judder
-    return Math.max(0, a);
-  }
-  return 0.0;
+  // 0 = closed, 1 = fully open (swung into the room)
+  if (t < 4) return 1;
+  const k = clamp((t - 4) / 2, 0, 1);
+  const e = k * k * k;                                 // accelerating, hydraulic slam
+  const judder = t < 6 ? 0.012 * Math.sin(t * 60) * k : 0;
+  return clamp(1 - e + judder, 0, 1);
 }
-
-function lockBar(t) {
-  const s0 = smooth(6.05, 6.15, t);
-  const s1 = smooth(6.25, 6.35, t);
-  const s2 = smooth(6.45, 6.58, t);
-  return clamp(s0 * 0.34 + s1 * 0.34 + s2 * 0.34, 0, 1);
+function bolt(t, t0) { return smooth(t0, t0 + 0.08, t); }
+function lamp(t) {
+  if (t < 6.9) return 1;
+  if (t < 7.05) return hash(Math.floor(t * 70)) > 0.45 ? 0.8 : 0;
+  return 0;
 }
-
-function powerOn(t) {
-  if (t < 6.75) return 1.0;
-  if (t < 7.0) return mix(1.0, 0.0, smooth(6.75, 6.95, t)) * (0.6 + 0.4 * Math.sin(t * 60.0));
-  if (t < 8.0) return 0.0;
-  if (t < 8.15) return 0.35 * (0.5 + 0.5 * Math.sin(t * 70.0)); // failed fluorescent stab
-  return 0.0;
-}
-
-function beaconOn(t) {
-  return smooth(8.0, 8.25, t);
-}
-
-function dustOpacity(t) {
-  if (t < 4.0) return 0;
-  if (t < 6.0) return 0.1 * smooth(4.0, 4.5, t);
-  const e = t - 6.0;
-  return clamp(1.0 * Math.exp(-e * 3.2), 0, 1);
-}
+function beacon(t) { return t < 8 ? 0 : smooth(8, 8.15, t); }
 
 export default {
   duration: 10,
   fps: 24,
-  sceneScale: 0.5,
+  sceneScale: 0.72,
 
   params(t) {
-    return [doorAngle(t), lockBar(t), powerOn(t), beaconOn(t), dustOpacity(t)];
+    return [doorAngle(t), bolt(t, 6.1), bolt(t, 6.3), bolt(t, 6.5), lamp(t), beacon(t), t >= 6 ? t - 6 : -1, t];
   },
 
   post(t) {
-    let shake = 0.035;
-    if (t >= 4.0 && t < 6.0) shake = 0.16;
-    if (t >= 6.0) shake = Math.max(0.035, 1.15 * Math.exp(-(t - 6.0) * 7.5));
-    const dark = t >= 7.0 && t < 8.0;
-    const beacon = beaconOn(t);
-    const temp = mix(-0.6, 2.0, beacon);
-    const flash = (t >= 5.98 && t < 6.1) ? mix(0, 0.16, 1 - Math.abs(t - 6.02) / 0.07) : 0;
-    return {
-      bar: 0.12,
-      grain: 0.08,
-      vignette: 1.1,
-      shake,
-      exposure: dark ? 0.85 : 1.05,
-      temp,
-      flash,
-      flashColor: [1, 0.9, 0.75],
-      bloom: 0.32,
-      contrast: 1.16,
-      sat: beacon > 0.5 ? 0.8 : 0.92,
-    };
+    const p = { bar: 0.12, grain: 0.08, vignette: 1.1, bloom: 0.5, aberr: 0.0016, temp: -0.2, contrast: 1.1, sat: 0.85, exposure: 1.05 };
+    if (t >= 6 && t < 6.7) {
+      const k = 1 - (t - 6) / 0.7;
+      p.shake = 1.2 * k * k;
+      p.flash = t < 6.05 ? 0.15 : 0;
+      p.flashColor = [0.9, 0.9, 1.0];
+    }
+    if (t >= 4 && t < 6) p.shake = 0.12 * (t - 4) / 2;
+    if (t >= 8) { p.temp = 0.1; p.sat = 1.0; }
+    return p;
   },
 
   textures: [
     {
-      w: 1024, h: 320,
+      w: 1024, h: 256,
       draw(ctx, w, h) {
-        ctx.fillStyle = '#141310';
-        ctx.fillRect(0, 0, w, h);
-        // worn stencil plate grime
-        for (let i = 0; i < 900; i++) {
-          const x = Math.random() * w, y = Math.random() * h;
-          ctx.fillStyle = `rgba(${Math.random()>.5?255:0},${Math.random()>.5?255:0},${Math.random()>.5?255:0},${Math.random()*0.04})`;
-          ctx.fillRect(x, y, 2, 2);
-        }
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillStyle = '#d8cfa8';
-        ctx.font = 'bold 92px "Russo One"';
-        ctx.fillText('ВЫХОД ЗАПРЕЩЁН', w / 2, h / 2 + 8);
-        // stencil break gaps
+        ctx.clearRect(0, 0, w, h);
+        ctx.fillStyle = 'rgba(160,20,15,0.85)';
+        ctx.fillRect(40, 30, w - 80, h - 60);
+        ctx.fillStyle = 'rgba(235,225,200,0.92)';
+        let fs = 120; ctx.font = `${fs}px "Russo One"`;
+        const mw = ctx.measureText('ВЫХОД ЗАПРЕЩЁН').width;
+        if (mw > w - 150) { fs *= (w - 150) / mw; ctx.font = `${fs}px "Russo One"`; }
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText('ВЫХОД ЗАПРЕЩЁН', w / 2, h / 2 + 6);
+        // wear
         ctx.globalCompositeOperation = 'destination-out';
-        for (let i = 0; i < 40; i++) {
-          ctx.fillStyle = 'rgba(0,0,0,1)';
-          ctx.fillRect(Math.random() * w, h * 0.25 + Math.random() * h * 0.5, 3, 10);
+        for (let i = 0; i < 160; i++) {
+          ctx.globalAlpha = 0.2 + 0.6 * hash(i);
+          ctx.beginPath(); ctx.arc(hash(i + 1) * w, hash(i + 2) * h, 2 + hash(i + 3) * 10, 0, 7); ctx.fill();
         }
-        ctx.globalCompositeOperation = 'source-over';
+        ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1;
       },
     },
   ],
