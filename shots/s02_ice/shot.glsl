@@ -55,7 +55,7 @@ bool terrainHit(vec3 ro, vec3 rd, out float dist){
   // instead of hard-cutting to sky right where the detailed search gives up.
   if (rd.y < -0.0008){
     float planeD = -ro.y / rd.y;
-    if (planeD > TERR_RANGE) { dist = min(planeD, 400.0); return true; }
+    if (planeD > TERR_RANGE) { dist = min(planeD, 150.0); return true; }
   }
   dist = TERR_RANGE; return false;
 }
@@ -261,7 +261,10 @@ vec3 render(vec2 fc){
       vec3 lc = vec3(1.0, .82, .55) * cone * dif * atten * 3.6;
       // soft omnidirectional scatter: blowing snow throws headlight glow past the beam edge,
       // and lets the vehicle's OWN lights read on its own body even outside the strict cone.
-      float scatter = atten * (mat == M_SNOW ? 0.55 : 0.9);
+      // Falls off much faster than the coned beam so it stays local to the vehicle instead of
+      // washing the whole far ground plane it's driving across.
+      float scatterAtten = 1.0 / (1.0 + ld * ld * .25);
+      float scatter = scatterAtten * (mat == M_SNOW ? 0.55 : 0.9);
       col3 += albedo * (lc + vec3(1.0, .8, .55) * scatter) + spec * cone * atten * 1.4;
       col3 += sparkle * cone * atten * vec3(1.0, .92, .8);
     }
@@ -314,7 +317,7 @@ vec3 render(vec2 fc){
         float ph = hgPhase(dot(rd, -Ld), .55);
         float dens = 0.5 + 0.8 * fbm3lo(sp * .5 + t * vec3(WIND.x, 0., WIND.y) * WSPD);
         dens *= (1.0 + gust * 1.2);
-        shaft += vec3(1.0, .8, .5) * cone * ph * dens * stepL * 0.1;
+        shaft += vec3(1.0, .8, .5) * cone * ph * dens * stepL * 0.05;
       }
     }
     col += shaft;
@@ -326,18 +329,18 @@ vec3 render(vec2 fc){
   // arbitrary fog wash that would otherwise cut a hard line right at the horizon.
   if (hitTerrain || hitVehicle){
     vec3 samp = ro + rd * min(dist, 22.0);
-    float heightW = smoothstep(1.1, -0.15, samp.y);
+    float heightW = smoothstep(2.2, -0.15, samp.y);
     vec2 w = vec2(dot(samp.xz, WIND), dot(samp.xz, vec2(-WIND.y, WIND.x)));
     vec2 streamUV = vec2(w.x * 0.3 - t * WSPD * 3.0, w.y * 1.6);  // compressed along-wind = streaky
     float n = fbm2(streamUV);
     float drift = heightW * (0.28 + 0.55 * n) * (0.55 + gust * 0.8);
     float distW = 1.0 - exp(-min(dist, 22.0) * 0.04);
-    col = mix(col, vec3(.05, .06, .08), clamp(drift * distW, 0., 0.6));
+    col = mix(col, vec3(.05, .06, .08), clamp(drift * distW, 0., 0.4));
   }
 
   // general atmospheric fog — same dark blue-grey as the sky base, so the horizon dissolves
   // into the blizzard instead of cutting hard against it.
-  float fogAmt = 1.0 - exp(-dist * 0.02 * (0.6 + gust * 0.5));
+  float fogAmt = 1.0 - exp(-dist * 0.07 * (0.6 + gust * 0.5));
   vec3 fogCol = mix(vec3(.008, .011, .017), vec3(.02, .024, .032), skyTexture(normalize(vec3(rd.x, 0.05, rd.z)), t) * 0.5 + 0.25);
   col = mix(col, fogCol, clamp(fogAmt, 0., 0.94));
 

@@ -88,12 +88,13 @@ export default {
       grain: 0.075,
       vignette: 1.05,
       shake,
-      exposure: final ? 0.55 : 0.98,
-      contrast: final ? 1.75 : 1.15,
-      sat: final ? 0.45 : 0.85,
+      exposure: final ? 1.0 : 0.98,
+      contrast: final ? 1.3 : 1.15,
+      sat: final ? 0.55 : 0.85,
       temp: -0.3,
-      bloom: final ? 0.16 : 0.28,
-      flash: final ? 0.22 * smooth(12.15, 12.2, t) * (1 - smooth(12.28, 12.4, t)) : 0,
+      bloom: final ? 0.12 : 0.28,
+      // a single sharp, small strobe right at the instant the lights snap back on
+      flash: (t >= 12.2 && t < 12.22) ? 0.1 * (1 - (t - 12.2) / 0.02) : 0,
       flashColor: [1, 0.95, 0.9],
       fade,
     };

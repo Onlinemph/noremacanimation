@@ -9,7 +9,7 @@ export default {
       grain: 0.07,
       aberr: 0.0018,
       vignette: 1.05,
-      bloom: 0.42,
+      bloom: 0.4,
       exposure: 1.0,
       contrast: 1.1,
       sat: 0.72,

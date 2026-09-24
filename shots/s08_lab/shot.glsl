@@ -72,7 +72,7 @@ vec2 map(vec3 p){
   r = opU(r, vec2(p.y, MI_FLOOR));
   r = opU(r, vec2(ROOM_CEIL - p.y, MI_CEIL));
   r = opU(r, vec2(p.x - (-1.75), MI_WALLL));
-  r = opU(r, vec2(1.85 - p.x, MI_WALLR));
+  r = opU(r, vec2(3.4 - p.x, MI_WALLR));
   r = opU(r, vec2(p.z - (-0.6), M_CONCRETE));
   r = opU(r, vec2(14.4 - p.z, M_CONCRETE));
 
@@ -280,8 +280,8 @@ vec3 shade(vec2 h, vec3 p, vec3 n, vec3 rd, vec3 fp, vec3 fd){
     if (ld < bestLd){ bestLd = ld; bestDir = (lp - p) / max(ld,1e-4); }
   }
   float ndlg = max(dot(n, bestDir), 0.0);
-  float gatten = 1.0 / (1.0 + bestLd*bestLd*1.4);
-  col += albedo * ndlg * gatten * vec3(.18, .95, .32) * 1.1;
+  float gatten = 1.0 / (1.0 + bestLd*bestLd*2.4);
+  col += albedo * ndlg * gatten * vec3(.18, .95, .32) * 1.3;
 
   // dim cold ambient fill so shadows aren't pure black
   col += albedo * vec3(.012, .018, .02);

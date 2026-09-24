@@ -172,7 +172,7 @@ vec3 render(vec2 fc){
     vec3 L = p - flPos; float dist = max(length(L), .5);
     float cone = spotLight(p, flPos, flDir, .82, .965) * flashCookie(p, flPos, flDir);
     float ndotl = max(dot(n, -L/dist), 0.);
-    float flPow = finalPhase ? (isMon ? 0.14 : 0.02) : 0.5;
+    float flPow = finalPhase ? (isMon ? 0.35 : 0.02) : 0.5;
     col += alb * ndotl * cone * flPow * monK * ao * vec3(1.0,.97,.92) * 3.0;
   }
 
@@ -211,16 +211,17 @@ vec3 render(vec2 fc){
 
   // cold volumetric haze: thicker with distance, and glowing where the flashlight cone crosses it.
   // during the final reveal the background must read as flat black, not fog.
-  float hazeRate = finalPhase ? 0.32 : 0.05;
+  float hazeRate = finalPhase ? 0.55 : 0.05;
   float hazeAmt = 1.0 - exp(-d * hazeRate);
-  vec3 hazeCol = vec3(.006,.007,.009);
+  vec3 hazeCol = vec3(0.);
   if (!finalPhase){
+    hazeCol = vec3(.006,.007,.009);
     vec3 L = p - flPos; float dist = max(length(L), .4);
     float cone = spotLight(p, flPos, flDir, .8, .96);
     hazeCol += vec3(.35,.38,.42) * cone * .05 * min(d, 8.0);
   }
-  col = mix(col, hazeCol, clamp(hazeAmt, 0., finalPhase ? 0.985 : 0.9));
+  col = mix(col, hazeCol, clamp(hazeAmt, 0., finalPhase ? 1.0 : 0.9));
+  if (finalPhase && !isMon) col = min(col, vec3(0.02)); // background stays flat black behind the reveal
 
-  if (finalPhase) return vec3(col.r, isMon ? 1.0 : 0.0, ao);
   return col;
 }

@@ -146,30 +146,33 @@ vec2 map(vec3 p){
 }
 
 vec3 nrm(vec3 p){
-  vec2 e = vec2(0.0012, 0.);
-  return normalize(vec3(
-    map(p + e.xyy).x - map(p - e.xyy).x,
-    map(p + e.yxy).x - map(p - e.yxy).x,
-    map(p + e.yyx).x - map(p - e.yyx).x));
+  // tetrahedron technique: 4 taps instead of 6
+  const vec2 k = vec2(1., -1.);
+  const float e = 0.0015;
+  return normalize(
+    k.xyy * map(p + k.xyy * e).x +
+    k.yyx * map(p + k.yyx * e).x +
+    k.yxy * map(p + k.yxy * e).x +
+    k.xxx * map(p + k.xxx * e).x);
 }
 
 float calcAO(vec3 p, vec3 n){
   float occ = 0., sca = 1.0;
-  for (int i = 0; i < 5; i++){
-    float h = 0.02 + 0.05 * float(i);
+  for (int i = 0; i < 3; i++){
+    float h = 0.025 + 0.07 * float(i);
     float d = map(p + n * h).x;
     occ += (h - d) * sca;
-    sca *= 0.65;
+    sca *= 0.6;
   }
-  return clamp(1.0 - 2.6 * occ, 0.0, 1.0);
+  return clamp(1.0 - 3.2 * occ, 0.0, 1.0);
 }
 
 float shadow(vec3 ro, vec3 rd, float maxT){
   float res = 1.0, t = 0.06;
-  for (int i = 0; i < 18; i++){
+  for (int i = 0; i < 11; i++){
     float h = map(ro + rd * t).x;
     res = min(res, 8.0 * h / t);
-    t += clamp(h, 0.03, 0.25);
+    t += clamp(h, 0.04, 0.3);
     if (res < 0.03 || t > maxT) break;
   }
   return clamp(max(res, 0.16), 0.0, 1.0); // never fully black: bulb bounce/fill
@@ -287,11 +290,11 @@ vec3 render(vec2 fc){
 
   float d = 0.0; vec2 h;
   bool hitAny = false;
-  for (int i = 0; i < 130; i++){
+  for (int i = 0; i < 90; i++){
     vec3 p = ro + rd*d;
     h = map(p);
-    if (h.x < 0.0015 * max(d,1.0)) { hitAny = true; break; }
-    d += h.x * 0.85;
+    if (h.x < 0.002 * max(d,1.0)) { hitAny = true; break; }
+    d += h.x * 0.9;
     if (d > 9.0) break;
   }
 
@@ -313,7 +316,7 @@ vec3 render(vec2 fc){
   vec3 bp = bulbPos();
   float dither = fract(sin(dot(fc, vec2(12.9898,78.233)))*43758.5453);
   vec3 vol = vec3(0.);
-  const int VS = 10;
+  const int VS = 6;
   for (int i = 0; i < VS; i++){
     float ft = (float(i) + dither) / float(VS);
     float sd = ft * min(d, 3.2);

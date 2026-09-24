@@ -107,7 +107,9 @@ vec3 exteriorScene(vec2 fc, vec2 uv, float t){
   // ---- sky: polar night, mostly black, aurora is the only real light ----
   vec3 sky = mix(vec3(0.0015, 0.002, 0.006), vec3(0.004, 0.006, 0.014), smoothstep(-0.1, 0.5, rd.y));
   sky += stars(rd) * vec3(0.8, 0.85, 1.0);
-  sky += aurora(rd, t) * 2.2;
+  // aurora() is a 24-tap loop; skip it for pixels well below the horizon where it would be
+  // blended out by fog anyway (ground pixels near the camera never see it)
+  if (rd.y > -0.06) sky += aurora(rd, t) * 2.2;
 
   // ---- ground: dark blue-black snow, only the fire pool is warm ----
   vec3 col = sky;
