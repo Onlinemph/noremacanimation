@@ -59,7 +59,7 @@ export default {
   post(t) {
     const [recoilEnv, , muzzleFlashEnv, pointBlankEnv, akFlashEnv, ppshFlashEnv, , , revealEnv, turnFlash] = this.params(t);
     const shake = .20 + (t >= 4 && t < 18 ? .13 : 0) + recoilEnv * 1.5 + pointBlankEnv * .9 + akFlashEnv * .28 + ppshFlashEnv * .28;
-    const flashSum = Math.min(1.7, muzzleFlashEnv * 1.3 + akFlashEnv * .35 + ppshFlashEnv * .35 + turnFlash * .5);
+    const flashSum = Math.min(.85, muzzleFlashEnv * .6 + akFlashEnv * .28 + ppshFlashEnv * .28 + turnFlash * .4);
     const warm = muzzleFlashEnv, cool = akFlashEnv + ppshFlashEnv, red = turnFlash;
     const wsum = Math.max(.0001, warm + cool + red);
     const flashColor = [
@@ -74,7 +74,7 @@ export default {
       aberr: .0016 + recoilEnv * .001,
       vignette: .85,
       shake,
-      exposure: .78 + muzzleFlashEnv * .35 + revealEnv * .08,
+      exposure: .78 + muzzleFlashEnv * .18 + revealEnv * .08,
       flash: flashSum,
       flashColor,
       fade,

@@ -12,6 +12,7 @@
 #define MI_CLOCK    28.0
 #define MI_PIPE     29.0
 #define MI_HAND     30.0
+#define MI_SHARD    31.0
 
 const float ROOM_CEIL = 2.65;
 const float TANK_X = 1.30;      // tank row against the right wall
@@ -109,24 +110,22 @@ vec2 map(vec3 p){
 
     bool burst = last && t >= BURST_T;
     if (!burst){
+      // tank glass is NOT solid geometry (see through it): rendered as an analytic
+      // rim/tint pass in render() so the suspended figure stays visible inside.
+      // a thin liquid floor disc anchors the tank visually.
       vec3 lp = p - c;
-      float outer = sdCylY(lp - vec3(0., 1.05, 0.), 0.42, 0.95);
-      float inner = sdCylY(lp - vec3(0., 1.05, 0.), 0.36, 0.93);
-      float shell = max(outer, -inner);
-      shell = max(shell, lp.y - 2.02);           // no separate cap geo above
-      r = opU(r, vec2(shell, MI_GLASS));
+      float floorDisc = max(sdCylY(lp - vec3(0., 0.10, 0.), 0.40, 0.02), lp.y - 0.30);
+      r = opU(r, vec2(floorDisc, MI_GLASS));
 
-      // suspended monster inside, feet near tank floor
+      // suspended monster inside, feet near tank floor, facing the corridor (-X, toward camera)
       vec3 feet = c + vec3(0., 0.14, 0.);
       vec3 mp = p - feet;
       mp.y -= sin(t * 0.35 + seed * 7.0) * 0.05 + 0.02;   // slow drift
-      mp.xz *= rot2(sin(t * 0.22 + seed * 4.0) * 0.4 + (last ? PI * 0.5 : seed * 5.0));
-      float bnd = sdCapsule(mp, vec3(0., .2, 0.), vec3(0., 2., 0.), .55);
-      if (bnd < 0.25){
+      mp.xz *= rot2(PI * 0.5 + sin(t * 0.22 + seed * 4.0) * 0.25 + seed * 2.0);
+      float bnd = sdCapsule(mp, vec3(0., .2, 0.), vec3(0., 1.85, 0.), .34);
+      if (bnd < 0.22){
         vec2 mo = sdMonster(mp, t * 0.6, seed, 0.0);
         r = opU(r, mo);
-      } else {
-        r = opU(r, vec2(bnd, M_SKIN));
       }
 
       if (last && t >= LAST_T0){
@@ -154,9 +153,8 @@ vec2 map(vec3 p){
       vec3 feet = c + vec3(0., 0.14, 0.);
       vec3 lungeC = feet + vec3(-min(bt, 1.4) * 2.1, -min(bt,1.0)*0.15, 0.0);
       vec3 mp = p - lungeC;
-      vec2 mo = sdMonster(mp, t, seed, 1.0);
-      float bnd = sdCapsule(mp, vec3(0., .2, 0.), vec3(0., 2., 0.), 1.0);
-      r = opU(r, bnd < 0.35 ? mo : vec2(bnd, M_SKIN));
+      float bnd = sdCapsule(mp, vec3(0., .2, 0.), vec3(0., 1.85, 0.), .5);
+      if (bnd < 0.3) r = opU(r, sdMonster(mp, t, seed, 1.0));
 
       // shards: small thin boxes flying outward
       for (int s = 0; s < 10; s++){
@@ -166,7 +164,7 @@ vec2 map(vec3 p){
         vec3 sc = c + vec3(0., 1.0 + dir.y * 0.5, 0.) + dir * dist;
         vec3 sq = p - sc;
         sq.xy *= rot2(bt * (2.0 + hash11(fs)) );
-        r = opU(r, vec2(sdRoundBox(sq, vec3(0.05, 0.07, 0.004), 0.002), MI_GLASS));
+        r = opU(r, vec2(sdRoundBox(sq, vec3(0.05, 0.07, 0.004), 0.002), MI_SHARD));
       }
     }
   }
@@ -193,8 +191,9 @@ float shadow(vec3 ro, vec3 rd, float maxT){
   return clamp(res, 0.0, 1.0);
 }
 
-// flashlight: position roughly at camera, direction swings around the camera's own forward
-vec3 flashPos(vec3 ro){ return ro + vec3(0., 0.05, 0.); }
+// flashlight: held slightly off the eye-line (parallax gives real shading depth), swings
+// around the camera's own forward.
+vec3 flashPos(vec3 ro, vec3 camR, vec3 camU){ return ro + camR * 0.22 - camU * 0.16; }
 vec3 flashDir(vec3 fwd, vec3 right, vec3 up, float t){
   float sw = sin(t * 0.7) * 0.30;
   return normalize(fwd + right * sw + up * (sw * 0.25));
@@ -218,7 +217,7 @@ vec3 benchAlb(vec3 p){
   return base;
 }
 
-vec3 shade(vec2 h, vec3 p, vec3 n, vec3 rd, vec3 ro, vec3 fd){
+vec3 shade(vec2 h, vec3 p, vec3 n, vec3 rd, vec3 fp, vec3 fd){
   float m = h.y;
   vec3 albedo = vec3(.4);
   float rough = 0.6; bool emissive = false; vec3 emitCol = vec3(0.);
@@ -249,9 +248,10 @@ vec3 shade(vec2 h, vec3 p, vec3 n, vec3 rd, vec3 ro, vec3 fd){
       albedo = vec3(.02); emitCol = tex * vec3(.3,1.4,.35) * 1.6; emissive = true;
     } else { albedo = vec3(.12,.13,.12); rough = 0.5; }
   }
-  else if (m == MI_HAND) { albedo = mix(vec3(.42,.32,.36), vec3(.15,.05,.06), 0.3); rough = 0.4; }
-  else if (m <= 10.0) albedo = monsterAlbedo(m, p);
-  else if (m == MI_GLASS) { albedo = vec3(.05,.09,.08); rough = 0.05; }
+  else if (m == MI_HAND) { albedo = vec3(.5,.48,.4); rough = 0.45; }
+  else if (m == MI_SHARD) { albedo = vec3(.55,.7,.6); rough = 0.08; }
+  else if (m <= 10.0) albedo = monsterAlbedo(m, p) * 0.55;   // dim: read as a dark shape behind glass
+  else if (m == MI_GLASS) { albedo = vec3(.03,.05,.045); rough = 0.15; }
   else albedo = vec3(.3);
 
   if (emissive) return emitCol;
@@ -259,15 +259,14 @@ vec3 shade(vec2 h, vec3 p, vec3 n, vec3 rd, vec3 ro, vec3 fd){
   vec3 col = vec3(0.0);
 
   // flashlight — the dominant light source, s06-style: angular cone x inverse-square atten
-  vec3 fp = flashPos(ro);
   float cone = spotLight(p, fp, fd, 0.80, 0.95);
   float cookie = flashCookie(p, fp, fd);
   vec3 Lf = normalize(fp - p);
   float ldf = length(fp - p);
   float ndlf = max(dot(n, Lf), 0.0);
-  float atten = 1.0 / (1.0 + ldf*ldf*0.55);
+  float atten = 1.0 / (1.0 + ldf*ldf*0.75);
   float shf = shadow(p + n*0.006, Lf, ldf);
-  col += albedo * ndlf * cone * cookie * atten * shf * vec3(1.0, .97, .85) * 3.4;
+  col += albedo * ndlf * cone * cookie * atten * shf * vec3(1.0, .97, .85) * 2.4;
 
   vec3 h2 = normalize(Lf - rd);
   float spec = pow(max(dot(n, h2), 0.0), mix(70.0,14.0,rough)) * (1.0-rough) * cone * atten;
@@ -287,7 +286,47 @@ vec3 shade(vec2 h, vec3 p, vec3 n, vec3 rd, vec3 ro, vec3 fd){
   // dim cold ambient fill so shadows aren't pure black
   col += albedo * vec3(.012, .018, .02);
 
+  if (m == MI_SHARD){
+    float rim = pow(1.0 - abs(dot(n, rd)), 3.0);
+    col += rim * vec3(.4, .9, .5) * 0.6;
+  }
+
   return col;
+}
+
+// Analytic "glass" pass for one tank: the ray isn't blocked by real geometry (see map()),
+// so we fake the cylinder wall by intersecting an infinite vertical cylinder analytically
+// and adding a fresnel rim + absorption tint for the segment of the ray that's inside it.
+// This is what lets the suspended figure stay visible while the tank still reads as glass.
+vec3 tankGlassPass(vec3 ro, vec3 rd, float d, vec3 center, float R, float y0, float y1, vec3 tint){
+  vec2 oc = ro.xz - center.xz;
+  vec2 rdxz = rd.xz;
+  float b = dot(oc, rdxz), c2 = dot(oc, oc) - R * R, a = dot(rdxz, rdxz);
+  if (a < 1e-6) return vec3(0.);
+  float disc = b * b - a * c2;
+  if (disc < 0.0) return vec3(0.);
+  float sq = sqrt(disc);
+  float t0 = (-b - sq) / a, t1 = (-b + sq) / a;
+  t0 = max(t0, 0.0); t1 = min(t1, d);
+  if (t1 <= t0) return vec3(0.);
+  float y0w = ro.y + rd.y * t0, y1w = ro.y + rd.y * t1;
+  if (max(y0w, y1w) < y0 || min(y0w, y1w) > y1) return vec3(0.);
+
+  vec3 add = vec3(0.);
+  // rim highlights at both crossings (entry/exit) — grazing angle glints
+  for (int k = 0; k < 2; k++){
+    float tk = k == 0 ? t0 : t1;
+    vec3 pk = ro + rd * tk;
+    if (pk.y < y0 || pk.y > y1) continue;
+    vec3 nrm2 = normalize(vec3(pk.x - center.x, 0., pk.z - center.z));
+    float fres = pow(1.0 - abs(dot(nrm2, -rd)), 4.0);
+    add += tint * fres * 0.85;
+  }
+  // absorption tint through the liquid for the segment inside the tank
+  float pathLen = clamp(t1 - t0, 0.0, R * 2.2);
+  float tintAmt = 1.0 - exp(-pathLen * 1.1);
+  add += tint * tintAmt * 0.12;
+  return add;
 }
 
 vec3 render(vec2 fc){
@@ -296,26 +335,27 @@ vec3 render(vec2 fc){
 
   vec3 ro, ta; float focal;
   if (t < 6.0){
-    ro = vec3(-0.90, 1.55, cz);
-    ta = vec3(TANK_X + 0.3, 1.30, cz + 0.9);
-    focal = 1.9;
+    ro = vec3(-1.25, 1.5, cz);
+    ta = vec3(TANK_X, 1.25, cz + 2.1);
+    focal = 1.85;
   } else {
-    // settle & push in on the last tank
+    // settle & push in on the last tank, 3/4 angle so the cylinder curvature reads
     vec3 lastC = vec3(TANK_X, 1.3, tankZ(NTANK-1));
-    ro = mix(vec3(-0.90, 1.55, cz), lastC + vec3(-2.0, 0.05, -0.35), push);
-    ta = mix(vec3(TANK_X + 0.3, 1.30, cz + 0.9), lastC + vec3(0.25,0.05,0.15), push);
-    focal = mix(1.9, 2.1, push);
+    ro = mix(vec3(-1.25, 1.5, cz), lastC + vec3(-2.3, 0.0, -1.5), push);
+    ta = mix(vec3(TANK_X, 1.25, cz + 2.1), lastC + vec3(0.1,0.05,0.), push);
+    focal = mix(1.85, 2.2, push);
   }
 
   vec3 camF = normalize(ta - ro);
   vec3 camR = normalize(cross(camF, vec3(0.,1.,0.)));
   vec3 camU = cross(camR, camF);
   vec3 fd = flashDir(camF, camR, camU, t);
+  vec3 fp = flashPos(ro, camR, camU);
 
   vec3 rd = camRay(fc, ro, ta, focal, 0.0);
 
   float d = 0.0; vec2 h; bool hitAny = false;
-  for (int i = 0; i < 140; i++){
+  for (int i = 0; i < 130; i++){
     vec3 p = ro + rd * d;
     h = map(p);
     float th = 0.0015 * max(d, 1.0);
@@ -325,24 +365,13 @@ vec3 render(vec2 fc){
   }
 
   vec3 col;
+  float hitD = hitAny ? d : 16.0;
   if (!hitAny){
-    col = vec3(.004,.006,.005);
+    col = vec3(.0025,.0035,.003);
   } else {
     vec3 p = ro + rd * d;
     vec3 n = nrm(p);
-    col = shade(h, p, n, rd, ro, fd);
-
-    // crack overlay on the last tank's glass, near burst
-    if (h.y == MI_GLASS && t >= LAST_T0 && t < BURST_T){
-      vec3 c = vec3(TANK_X, 0.0, tankZ(NTANK-1));
-      vec3 lp = p - c;
-      float ang = atan(lp.z, lp.x);
-      vec2 uv = vec2(ang * 0.42, lp.y);
-      vec2 origin = vec2(PI * 0.42, handLocal().y);
-      float growth = smoothstep(LAST_T0 + 0.3, LAST_CRACK1, t) * 1.4;
-      float crack = crackLines(uv, origin, growth, 7.0);
-      col += crack * vec3(0.7, 1.0, 0.8) * 2.0;
-    }
+    col = shade(h, p, n, rd, fp, fd);
 
     // eyes opening in the last tank
     if (t >= 7.5 && t < BURST_T){
@@ -356,32 +385,57 @@ vec3 render(vec2 fc){
       }
     }
 
-    float fog = 1.0 - exp(-d*d*0.012);
-    col = mix(col, vec3(.008,.012,.010), fog*0.55);
+    float fog = 1.0 - exp(-d*d*0.006);
+    fog = min(fog, 0.4);
+    col = mix(col, vec3(.004,.006,.005), fog);
+  }
+
+  // analytic glass cylinders for the idle tanks (see-through, faked)
+  for (int i = 0; i < NTANK; i++){
+    bool lastTank = (i == NTANK - 1);
+    if (lastTank && t >= BURST_T) continue;
+    vec3 c = vec3(TANK_X, 0.0, tankZ(i));
+    vec3 tint = vec3(.15, .9, .35);
+    col += tankGlassPass(ro, rd, hitD, c, 0.42, 0.14, 2.02, tint);
+
+    // crack overlay on the last tank, near burst
+    if (lastTank && t >= LAST_T0 && t < BURST_T){
+      vec2 oc = ro.xz - c.xz;
+      float b = dot(oc, rd.xz), a = dot(rd.xz, rd.xz), c2 = dot(oc,oc) - 0.42*0.42;
+      float disc = b*b - a*c2;
+      if (disc > 0.0 && a > 1e-6){
+        float te = (-b - sqrt(disc)) / a;
+        if (te > 0.0 && te < hitD){
+          vec3 pe = ro + rd * te;
+          vec3 lp = pe - c;
+          float ang = atan(lp.z, lp.x);
+          vec2 uv = vec2(ang * 0.42, lp.y);
+          vec2 origin = vec2(PI * 0.42, handLocal().y);
+          float growth = smoothstep(LAST_T0 + 0.3, LAST_CRACK1, t) * 1.4;
+          float crack = crackLines(uv, origin, growth, 7.0);
+          col += crack * vec3(0.75, 1.0, 0.8) * 2.2;
+        }
+      }
+    }
   }
 
   // cheap volumetric shaft from the flashlight
-  vec3 fp = flashPos(ro);
   float dither = fract(sin(dot(fc, vec2(12.9898,78.233)))*43758.5453);
   vec3 vol = vec3(0.);
   const int VS = 8;
   for (int i = 0; i < VS; i++){
     float ft = (float(i)+dither)/float(VS);
-    float sd = ft * min(d, 6.0);
+    float sd = ft * min(hitD, 6.0);
     vec3 sp = ro + rd*sd;
     float c = dot(normalize(sp-fp), fd);
-    vol += smoothstep(0.90,0.995,c) / (1.0 + sd*sd*0.05);
+    vol += smoothstep(0.94,0.998,c) / (1.0 + sd*sd*0.08);
   }
-  col += vol * vec3(1.0,.95,.8) * 0.02;
+  col += vol * vec3(1.0,.95,.8) * 0.012;
 
-  // green ambient haze rising with proximity to the tank row
-  float haze = smoothstep(2.5, 0.0, abs(TANK_X - (ro.x + rd.x*min(d,8.0))));
-  col += vec3(.02,.06,.03) * haze * 0.05;
-
-  // burst flash / green wash on the last tank event
-  if (t >= BURST_T && t < BURST_T + 0.5){
-    float k = 1.0 - smoothstep(BURST_T, BURST_T+0.5, t);
-    col += vec3(.5,1.0,.6) * k * k * 1.5;
+  // burst: flash + green wash on the last tank event, brief and hard
+  if (t >= BURST_T && t < BURST_T + 0.22){
+    float k = 1.0 - smoothstep(BURST_T, BURST_T+0.22, t);
+    col += vec3(.5,1.0,.6) * k * k * 1.0;
   }
 
   return col;

@@ -100,58 +100,75 @@ export default {
       if (a > 0.01) {
         ctx.save();
         ctx.globalAlpha = a;
-        const w = 620 * s, h = 760 * s;
-        const x = W / 2 - w / 2, y = H / 2 - h / 2 - 10 * s;
+        const w = 560 * s, h = 440 * s;
+        const x = W / 2 - w / 2, y = H / 2 - h / 2;
         ctx.fillStyle = '#d8d0b6';
         ctx.fillRect(x, y, w, h);
         ctx.strokeStyle = 'rgba(0,0,0,.4)'; ctx.lineWidth = 2 * s; ctx.strokeRect(x, y, w, h);
         // grime
-        for (let i = 0; i < 1200; i++) {
+        for (let i = 0; i < 900; i++) {
           ctx.fillStyle = `rgba(70,60,40,${Math.random() * 0.06})`;
           ctx.fillRect(x + Math.random() * w, y + Math.random() * h, 2, 2);
         }
         // top secret stamp
         ctx.save();
-        ctx.translate(x + w * 0.72, y + h * 0.14);
+        ctx.translate(x + w * 0.74, y + h * 0.13);
         ctx.rotate(-0.2);
-        ctx.strokeStyle = '#8a1c1c'; ctx.lineWidth = 3 * s;
-        ctx.strokeRect(-95 * s, -22 * s, 190 * s, 44 * s);
+        ctx.strokeStyle = '#8a1c1c'; ctx.lineWidth = 2.5 * s;
+        ctx.strokeRect(-78 * s, -18 * s, 156 * s, 36 * s);
         ctx.fillStyle = 'rgba(138,28,28,0.9)';
-        ctx.font = `bold ${20 * s}px "Oswald"`;
+        ctx.font = `bold ${16 * s}px "Oswald"`;
         ctx.textAlign = 'center';
         ctx.fillText('СОВЕРШЕННО', 0, -2 * s);
-        ctx.fillText('СЕКРЕТНО', 0, 18 * s);
+        ctx.fillText('СЕКРЕТНО', 0, 14 * s);
         ctx.restore();
         ctx.textAlign = 'left';
 
         ctx.fillStyle = '#1a1a16';
-        ctx.font = `${26 * s}px "PT Mono"`;
-        ctx.fillText('ОБРАЗЕЦ 9-А. ПОДЛЁДНОЕ ОЗЕРО.', x + 30 * s, y + 60 * s);
-        ctx.fillText('ГЛУБИНА 3700 М', x + 30 * s, y + 92 * s);
-        ctx.font = `italic ${17 * s}px "PT Mono"`;
+        ctx.font = `${19 * s}px "PT Mono"`;
+        ctx.fillText('ОБРАЗЕЦ 9-А. ПОДЛЁДНОЕ ОЗЕРО.', x + 22 * s, y + 42 * s);
+        ctx.fillText('ГЛУБИНА 3700 М', x + 22 * s, y + 66 * s);
+        ctx.font = `italic ${13 * s}px "PT Mono"`;
         ctx.fillStyle = '#4a4436';
-        ctx.fillText('Sample 9-A. Subglacial lake.', x + 30 * s, y + 122 * s);
-        ctx.fillText('Depth 3,700 m.', x + 30 * s, y + 144 * s);
+        ctx.fillText('Sample 9-A. Subglacial lake.', x + 22 * s, y + 88 * s);
+        ctx.fillText('Depth 3,700 m.', x + 22 * s, y + 105 * s);
 
-        // grainy "photo" of the drill site
-        const px = x + 30 * s, py = y + 180 * s, pw = w - 60 * s, ph = 260 * s;
-        ctx.fillStyle = '#0c0f10'; ctx.fillRect(px, py, pw, ph);
+        // grainy "photo" of the drill rig on the ice
+        const px = x + 22 * s, py = y + 122 * s, pw = w - 44 * s, ph = h - 150 * s;
+        const grad = ctx.createLinearGradient(px, py, px, py + ph);
+        grad.addColorStop(0, '#0a1016'); grad.addColorStop(0.55, '#131b22'); grad.addColorStop(0.56, '#1c2226'); grad.addColorStop(1, '#2a2e30');
+        ctx.fillStyle = grad; ctx.fillRect(px, py, pw, ph);
         ctx.save();
         ctx.beginPath(); ctx.rect(px, py, pw, ph); ctx.clip();
-        ctx.strokeStyle = 'rgba(150,170,180,.5)'; ctx.lineWidth = 2 * s;
-        ctx.beginPath(); ctx.moveTo(px + pw * 0.5, py + ph); ctx.lineTo(px + pw * 0.5, py + ph * 0.25);
-        ctx.lineTo(px + pw * 0.35, py); ctx.stroke();
-        ctx.beginPath(); ctx.arc(px + pw * 0.5, py + ph * 0.22, pw * 0.16, 0, Math.PI * 2);
-        ctx.strokeStyle = 'rgba(150,170,180,.35)'; ctx.stroke();
-        for (let i = 0; i < 3000; i++) {
+        const gx = px + pw * 0.52, gy = py + ph * 0.56, gh = ph * 0.5;
+        ctx.strokeStyle = 'rgba(170,185,195,.65)'; ctx.lineWidth = 1.6 * s;
+        // derrick lattice tower
+        ctx.beginPath();
+        ctx.moveTo(gx - pw * 0.09, gy); ctx.lineTo(gx, gy - gh); ctx.lineTo(gx + pw * 0.09, gy); ctx.closePath(); ctx.stroke();
+        for (let i = 1; i < 6; i++) {
+          const f = i / 6, yy = gy - gh * f, ww = pw * 0.09 * (1 - f);
+          ctx.beginPath(); ctx.moveTo(gx - ww, yy); ctx.lineTo(gx + ww, yy); ctx.stroke();
+          ctx.beginPath(); ctx.moveTo(gx - pw * 0.09 * (1 - (f - 1 / 6)), gy - gh * (f - 1 / 6)); ctx.lineTo(gx + ww, yy); ctx.stroke();
+        }
+        // work-light glow atop the derrick
+        const lg = ctx.createRadialGradient(gx, gy - gh, 1, gx, gy - gh, pw * 0.12);
+        lg.addColorStop(0, 'rgba(255,210,140,.8)'); lg.addColorStop(1, 'rgba(255,210,140,0)');
+        ctx.fillStyle = lg; ctx.beginPath(); ctx.arc(gx, gy - gh, pw * 0.12, 0, Math.PI * 2); ctx.fill();
+        // horizon + snow drift texture
+        ctx.strokeStyle = 'rgba(150,165,175,.4)'; ctx.lineWidth = 1 * s;
+        for (let i = 0; i < 5; i++) {
+          ctx.beginPath(); ctx.moveTo(px, py + ph * (0.62 + i * 0.03) + Math.sin(i) * 4);
+          ctx.lineTo(px + pw, py + ph * (0.60 + i * 0.03) + Math.cos(i) * 4); ctx.stroke();
+        }
+        for (let i = 0; i < 2200; i++) {
           const b = Math.random() * 0.5 + Math.random() * 0.15;
-          ctx.fillStyle = `rgba(${180 * b},${190 * b},${195 * b},${Math.random() * 0.5})`;
-          ctx.fillRect(px + Math.random() * pw, py + Math.random() * ph, 1.4, 1.4);
+          ctx.fillStyle = `rgba(${180 * b},${190 * b},${195 * b},${Math.random() * 0.45})`;
+          ctx.fillRect(px + Math.random() * pw, py + Math.random() * ph, 1.3, 1.3);
         }
         ctx.restore();
-        ctx.font = `${13 * s}px "PT Mono"`;
+        ctx.font = `${11 * s}px "PT Mono"`;
         ctx.fillStyle = '#3a352a';
-        ctx.fillText('БУРОВАЯ ПЛОЩАДКА — Т9', px, py + ph + 20 * s);
+        ctx.fillText('БУРОВАЯ ПЛОЩАДКА — Т9', px, py + ph + 16 * s);
 
         ctx.restore();
       }

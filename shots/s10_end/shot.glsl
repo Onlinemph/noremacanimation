@@ -46,25 +46,25 @@ float baseSil(vec2 lp){
 
 // procedural plume (smoke+fire column) in local coords lp (screen units, origin at base).
 // Billows and bends with a wind shear that increases with height; domain-warped for turbulence.
-vec3 plumeColor(vec2 lp, float t, float flick){
-  vec3 col = vec3(0.0);
-  float h = clamp(lp.y, 0.0, 3.4);
+// smokeMask/smokeCol are meant to be MIXED into the background (so the plume occludes the aurora
+// behind it, reading as a dark silhouette); fireCol is additive (genuinely emissive).
+void plumeColor(vec2 lp, float t, float flick, out float smokeMask, out vec3 smokeCol, out vec3 fireAdd){
+  float h = clamp(lp.y, 0.0, 2.4);
   float wind = h * h * 0.16 + h * 0.05 + 0.05 * sin(t * 0.15);
   vec2 sp = vec2(lp.x - wind, lp.y * 0.75);
   vec2 warp = vec2(fbmLo(sp * 1.7 + vec2(0.0, -t * 0.3)), fbmLo(sp * 1.7 + vec2(5.2, -t * 0.22))) - 0.5;
   float n = fbmLo(sp * 2.1 + warp * 1.3 + vec2(0.0, -t * 0.45));
-  float width = 0.16 + h * 0.40 + 0.10 * n;
-  float cx = lp.x - wind - warp.x * 0.18;
-  float smokeMask = smoothstep(width, width * 0.25, abs(cx)) * smoothstep(3.1, 0.1, h) * (0.35 + 0.6 * n);
-  float heat = smoothstep(0.9, -0.1, h);
-  vec3 smokeCol = mix(vec3(0.05, 0.045, 0.048), vec3(0.34, 0.15, 0.06), heat * (0.55 + 0.35 * n));
-  col += smokeCol * smokeMask;
+  float width = 0.38 + h * 1.15 + 0.22 * n;
+  float cx = lp.x - wind - warp.x * 0.26;
+  smokeMask = smoothstep(width, width * 0.1, abs(cx)) * smoothstep(4.2, 0.05, h) * (0.8 + 0.5 * n);
+  smokeMask = clamp(smokeMask, 0.0, 1.0);
+  float heat = smoothstep(1.1, -0.1, h);
+  smokeCol = mix(vec3(0.018, 0.018, 0.022), vec3(0.42, 0.19, 0.08), heat * (0.6 + 0.35 * n));
   // fireball glow at the base, orange-white, flickering, small and hot
   float fireN = fbmLo(lp * vec2(6.0, 8.0) + vec2(0.0, -t * 2.3));
-  float fireMask = smoothstep(0.20, 0.0, length(lp * vec2(1.0, 1.7)) - 0.05 * fireN);
-  vec3 fireCol = mix(vec3(2.8, 1.0, 0.18), vec3(4.5, 2.4, 0.7), fireN) * flick;
-  col += fireCol * fireMask;
-  return col;
+  float fireMask = smoothstep(0.14, 0.0, length(lp * vec2(1.0, 1.7)) - 0.04 * fireN);
+  vec3 fireCol = mix(vec3(2.4, 0.85, 0.15), vec3(3.6, 2.0, 0.6), fireN) * flick;
+  fireAdd = fireCol * fireMask;
 }
 
 // sparks / embers rising from the fire (screen space, additive)
@@ -102,16 +102,12 @@ vec3 exteriorScene(vec2 fc, vec2 uv, float t){
   float flick = fireFlicker(t);
   vec3 fireWorld = vec3(2.6, 0.0, 42.0);
   vec3 fp = projectPoint(fireWorld);
-  float fireScale = clamp(1.0 / max(fp.z, 1.0) * 9.0, 0.05, 0.4); // artistic scale, not literal
+  float fireScale = clamp(1.0 / max(fp.z, 1.0) * 15.0, 0.08, 0.55); // artistic scale, not literal
 
   // ---- sky: polar night, mostly black, aurora is the only real light ----
   vec3 sky = mix(vec3(0.0015, 0.002, 0.006), vec3(0.004, 0.006, 0.014), smoothstep(-0.1, 0.5, rd.y));
   sky += stars(rd) * vec3(0.8, 0.85, 1.0);
   sky += aurora(rd, t) * 2.2;
-  // fire bleeding into the low sky near the horizon, angularly toward the fire, tight cone
-  float angTo = 1.0 - clamp(distance(rd.xz / max(length(rd.xz), 1e-3), normalize(fireWorld.xz)), 0.0, 1.0);
-  float horizonBand = exp(-abs(rd.y - 0.01) * 9.0);
-  sky += vec3(1.4, 0.5, 0.14) * pow(max(angTo, 0.0), 40.0) * horizonBand * flick * 0.6;
 
   // ---- ground: dark blue-black snow, only the fire pool is warm ----
   vec3 col = sky;
@@ -131,13 +127,16 @@ vec3 exteriorScene(vec2 fc, vec2 uv, float t){
   // ---- Object 9: base silhouette + billowing plume (billboarded at fireWorld) ----
   vec2 lpFire = (uv - fp.xy) / fireScale;
   lpFire.y += 0.05;
-  if (abs(lpFire.x) < 2.6 && lpFire.y > -0.5 && lpFire.y < 3.6){
+  if (abs(lpFire.x) < 4.0 && lpFire.y > -0.5 && lpFire.y < 2.8){
+    float smokeMask; vec3 smokeCol, fireAdd;
+    plumeColor(lpFire, t, flick, smokeMask, smokeCol, fireAdd);
+    col = mix(col, smokeCol, clamp(smokeMask, 0.0, 1.0));
+    col += fireAdd;
     float bd = baseSil(lpFire);
     float bMask = smoothstep(0.02, -0.012, bd);
     col = mix(col, vec3(0.003, 0.0032, 0.0035), bMask);
-    float bRim = smoothstep(0.05, 0.0, abs(bd)) * (1.0 - bMask);
-    col += vec3(1.0, 0.5, 0.2) * bRim * flick * 0.5;
-    col += plumeColor(lpFire, t, flick) * fireScale * 2.0;
+    float bRim = smoothstep(0.025, 0.0, abs(bd)) * (1.0 - bMask);
+    col += vec3(0.9, 0.42, 0.16) * bRim * flick * 0.18;
   }
   if (abs(uv.x - fp.x) < 0.35 && uv.y < fp.y + 0.3){
     col += embers(uv, fp.xy + vec2(0.0, 0.02), t) * fireScale;

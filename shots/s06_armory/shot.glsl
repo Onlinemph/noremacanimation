@@ -10,6 +10,43 @@
 #define MI_BULB    42.0
 #define MI_CORD    43.0
 #define MI_POSTER  44.0
+#define MI_BAND    45.0
+
+// ------------------------------------------------------------ KS-23 detail --
+// Own higher-detail KS-23 (common.glsl's sdKS23 is the plain shared version).
+// Adds: tapered two-piece receiver, ejection port, rear sight, bolt rails,
+// heavier trigger guard. Barrel +Z, meters, pump 0..1.
+vec2 sdKS23Detail(vec3 p, float pump){
+  vec2 r = vec2(1e5, M_GUNMETAL);
+  float barrel = sdCylZ(p - vec3(0., .02, .37), .019, .26);
+  barrel = max(barrel, -sdCylZ(p - vec3(0., .02, .6), .0115, .1));
+  r = opU(r, vec2(barrel, M_GUNMETAL));
+  r = opU(r, vec2(sdBox(p - vec3(0., .045, .6), vec3(.003, .01, .006)), M_GUNMETAL));   // front sight
+  r = opU(r, vec2(sdCylZ(p - vec3(0., .005, .6), .026, .012), M_GUNMETAL));             // muzzle band
+  r = opU(r, vec2(sdCylZ(p - vec3(0., -.024, .3), .016, .2), M_GUNMETAL));              // mag tube
+  float fz = .26 - .09 * pump;
+  float fe = sdRoundBox(p - vec3(0., -.02, fz), vec3(.028, .024, .085), .014);
+  fe += .0015 * sin(p.z * 180.) * step(abs(p.y + .02), .02);                            // pump ribs
+  r = opU(r, vec2(fe, M_WOOD));
+  // tapered receiver: narrower front block blended into a taller rear block
+  float rcFront = sdRoundBox(p - vec3(0., .0, .075), vec3(.0215, .033, .045), .006);
+  float rcRear  = sdRoundBox(p - vec3(0., .010, -.03), vec3(.0255, .050, .105), .007);
+  float rc = smin(rcFront, rcRear, .025);
+  rc = smax(rc, -sdBox(p - vec3(.023, .022, .05), vec3(.009, .020, .052)), .004);       // ejection port
+  rc = smax(rc, -sdBox(p - vec3(.021, .014, -.02), vec3(.004, .005, .09)), .0025);      // bolt rail R
+  rc = smax(rc, -sdBox(p - vec3(-.021, .014, -.02), vec3(.004, .005, .09)), .0025);     // bolt rail L
+  r = opU(r, vec2(rc, M_GUNMETAL));
+  r = opU(r, vec2(sdBox(p - vec3(0., .062, -.115), vec3(.0045, .007, .012)), M_GUNMETAL)); // rear sight
+  r = opU(r, vec2(max(sdTorus((p - vec3(0., -.058, -.03)).xzy, vec2(.028, .0045)), -(p.y + .045)), M_GUNMETAL));
+  r = opU(r, vec2(sdCapsule(p, vec3(0., -.04, -.025), vec3(0., -.068, -.035), .003), M_GUNMETAL));
+  vec3 sq = p - vec3(0., -.03, -.1);
+  sq.yz *= rot2(-.18);
+  float stock = sdRoundBox(sq - vec3(0., -.02, -.22), vec3(.02 + .008 * clamp(-sq.z * 2., 0., 1.), .035 + .045 * clamp(-sq.z * 2.5, 0., 1.), .22), .015);
+  float grip = sdRoundBox(rotX(p - vec3(0., -.08, -.1), .5), vec3(.018, .05, .025), .012);
+  r = opU(r, vec2(smin(stock, grip, .03), M_WOOD));
+  r = opU(r, vec2(sdRoundBox(sq - vec3(0., -.03, -.445), vec3(.024, .08, .008), .006), M_GUNMETAL));
+  return r;
+}
 
 // ---- room bounds (meters) ----
 const float ROOM_L = -1.30, ROOM_R = 1.35, ROOM_BACK = 2.55, ROOM_CEIL = 2.3;
@@ -18,8 +55,8 @@ const float TABLE_TOP = 0.80;
 
 vec3 bulbPos(){
   float sw = sin(iTime * 0.85 + 1.1) * 0.22;         // slow pendulum swing
-  vec3 anchor = vec3(0.05, ROOM_CEIL, 0.75);
-  float len = 0.55;
+  vec3 anchor = vec3(0.38, ROOM_CEIL, 0.62);         // off to one side: raking cross-light
+  float len = 0.62;
   return anchor + vec3(sin(sw), -cos(sw), sin(sw)*0.15) * len;
 }
 
@@ -64,7 +101,7 @@ vec2 map(vec3 p){
   vec3 gp = p - (tc + vec3(0.02, TABLE_TOP + 0.05, -0.02));
   gp = rotY(gp, PI * 0.5 + 0.12);
   gp = rotZ(gp, 0.035);
-  r = opU(r, sdKS23(gp, clamp(uP[0], 0., 1.)));
+  r = opU(r, sdKS23Detail(gp, clamp(uP[0], 0., 1.)));
 
   // ---- 23mm shells standing on the table ----
   for (int i = 0; i < 5; i++){
@@ -73,7 +110,8 @@ vec2 map(vec3 p){
     vec3 sp = p - sc;
     float h = 0.075;
     float body = sdCylY(sp - vec3(0., h * 0.5, 0.), 0.0125, h * 0.5);
-    r = opU(r, vec2(body, sp.y < h * 0.62 ? MI_HULL : MI_BRASS));
+    float mat = abs(sp.y - h * 0.60) < 0.004 ? MI_BAND : (sp.y < h * 0.55 ? MI_BRASS : MI_HULL);
+    r = opU(r, vec2(body, mat));
   }
 
   // ---- lockers, left wall ----
@@ -99,7 +137,7 @@ vec2 map(vec3 p){
   r = opU(r, sdCrate(p, vec3(ROOM_R - 0.36, 0.19, 2.05), vec3(0.28, 0.19, 0.22)));
 
   // ---- bulb + cord ----
-  vec3 anchor = vec3(0.05, ROOM_CEIL, 0.75);
+  vec3 anchor = vec3(0.38, ROOM_CEIL, 0.62);
   vec3 bp = bulbPos();
   r = opU(r, vec2(sdCapsule(p, anchor, bp - vec3(0.,0.05,0.), 0.004), MI_CORD));
   r = opU(r, vec2(sdSphere(p - bp, 0.035), MI_BULB));
@@ -113,6 +151,17 @@ vec3 nrm(vec3 p){
     map(p + e.xyy).x - map(p - e.xyy).x,
     map(p + e.yxy).x - map(p - e.yxy).x,
     map(p + e.yyx).x - map(p - e.yyx).x));
+}
+
+float calcAO(vec3 p, vec3 n){
+  float occ = 0., sca = 1.0;
+  for (int i = 0; i < 5; i++){
+    float h = 0.02 + 0.05 * float(i);
+    float d = map(p + n * h).x;
+    occ += (h - d) * sca;
+    sca *= 0.65;
+  }
+  return clamp(1.0 - 2.6 * occ, 0.0, 1.0);
 }
 
 float shadow(vec3 ro, vec3 rd, float maxT){
@@ -178,11 +227,16 @@ vec3 shade(vec2 h, vec3 p, vec3 n, vec3 rd){
   else if (m == M_STEEL) albedo = steelAlbedo(p, false);
   else if (m == MI_LOCKERB) albedo = steelAlbedo(p, true);
   else if (m == M_CONCRETE) albedo = vec3(.22,.21,.20) * (0.7+0.5*fbm3lo(p*4.));
-  else if (m == M_WOOD) albedo = mix(vec3(.20,.12,.06), vec3(.32,.20,.10), fbm3lo(p*9.));
+  else if (m == M_WOOD) {
+    float grain = fbm3lo(p*9.) * 0.6 + 0.4 * noise3(p*60.);
+    albedo = mix(vec3(.17,.10,.05), vec3(.36,.23,.12), grain);
+    rough = 0.4;
+  }
   else if (m == MI_CRATE) albedo = crateAlbedo(p, n);
-  else if (m == MI_BRASS) { albedo = vec3(.55,.42,.18); rough = 0.25; }
-  else if (m == MI_HULL)  { albedo = vec3(.42,.06,.04); rough = 0.45; }
-  else if (m == M_GUNMETAL) { albedo = gunAlbedo(m, p); rough = 0.3; }
+  else if (m == MI_BRASS) { albedo = vec3(.62,.48,.20); rough = 0.15; }
+  else if (m == MI_HULL)  { albedo = vec3(.46,.07,.045); rough = 0.4; }
+  else if (m == MI_BAND)  { albedo = vec3(.03,.03,.03); rough = 0.5; }
+  else if (m == M_GUNMETAL) { albedo = gunAlbedo(m, p); rough = 0.18; }
   else if (m == M_GORE) albedo = goreColor(p);
   else if (m == MI_CORD) { albedo = vec3(.02); rough = 0.8; }
   else if (m == MI_BULB) { emissive = 1.0; emitCol = vec3(1.0,.78,.45)*6.0; albedo = vec3(1.,.9,.7); }
@@ -193,17 +247,19 @@ vec3 shade(vec2 h, vec3 p, vec3 n, vec3 rd){
   vec3 bp = bulbPos();
   vec3 L = bp - p; float ld = length(L); L /= ld;
   float ndl = max(dot(n, L), 0.0);
-  float atten = 1.0 / (1.0 + ld*ld*1.6);
+  float atten = 1.0 / (1.0 + ld*ld*2.6);           // hard falloff: a single hot bare bulb
   float sh = shadow(p + n*0.02, L, ld);
-  vec3 lightCol = vec3(1.0, .84, .62) * 2.6;
+  vec3 lightCol = vec3(1.0, .82, .58) * 4.0;
 
-  // cold ambient / flashlight-ish fill from camera side, keeps shadows readable
-  vec3 fill = vec3(.09,.11,.15) * (0.7 + 0.5*max(dot(n, vec3(0.,0.3,-1.)),0.0));
+  // near-black ambient: only a whisper of cold bounce, keeps the room genuinely dark
+  vec3 fill = vec3(.028,.034,.045) * (0.5 + 0.5*max(dot(n, vec3(0.,0.3,-1.)),0.0));
 
   vec3 h2 = normalize(L - rd);
-  float spec = pow(max(dot(n,h2),0.0), mix(80.0,16.0,rough)) * (1.0-rough);
+  float spNarrow = pow(max(dot(n,h2),0.0), mix(220.0,40.0,rough));
+  float spWide   = pow(max(dot(n,h2),0.0), mix(40.0,8.0,rough)) * 0.25;
+  float spec = (spNarrow + spWide) * (1.0 - rough*0.5);
 
-  vec3 col = albedo * (ndl * atten * sh * lightCol + fill) + spec * lightCol * sh * 0.4;
+  vec3 col = albedo * (ndl * atten * sh * lightCol + fill) + spec * lightCol * sh;
   return col;
 }
 
@@ -216,12 +272,12 @@ vec3 render(vec2 fc){
     float ke = smoothstep(0., 1., k);
     vec3 ro0 = vec3(-0.30, 1.18, -1.75), ta0 = vec3(0.10, 0.95, 1.05);
     float ang1 = mix(0.05, 0.40, k);
-    float rad1 = 0.78;
-    vec3 ro1 = TABLE_C + vec3(sin(ang1)*rad1, TABLE_TOP + 0.36, -cos(ang1)*rad1);
+    float rad1 = 0.80;
+    vec3 ro1 = TABLE_C + vec3(sin(ang1)*rad1, TABLE_TOP + 0.30, -cos(ang1)*rad1);
     vec3 ta1 = vec3(TABLE_C.x, TABLE_TOP + 0.02, TABLE_C.z);
     ro = mix(ro0, ro1, ke);
     ta = mix(ta0, ta1, ke);
-    focal = mix(0.95, 2.35, ke);
+    focal = mix(0.95, 2.2, ke);
   } else {
     ro = vec3(0.10, 1.30, -1.25);
     ta = vec3(0.05, 0.95, 0.85);
@@ -246,12 +302,11 @@ vec3 render(vec2 fc){
     vec3 p = ro + rd*d;
     vec3 n = nrm(p);
     col = shade(h, p, n, rd);
-    // AO-ish darkening in tight corners via cheap step count proxy
-    float ao = clamp(1.0 - float(130)/300.0, 0., 1.);
-    col *= 1.0;
-    // distance fog toward the back of the room
-    float fog = 1.0 - exp(-d*d*0.02);
-    col = mix(col, vec3(.02,.02,.025), fog*0.5);
+    float ao = calcAO(p, n);
+    col *= mix(0.35, 1.0, ao);
+    // distance fog / fake DOF: background falls away to near-black fast
+    float fog = 1.0 - exp(-d*d*0.045);
+    col = mix(col, vec3(.008,.008,.010), fog*0.82);
   }
 
   // cheap volumetric light shaft from the bulb (few dithered samples along the view ray)

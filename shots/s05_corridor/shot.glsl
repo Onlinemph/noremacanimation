@@ -148,15 +148,32 @@ vec3 render(vec2 fc){
 
   col += alb * .0025; // near-black ambient floor — most of the frame should read dark
 
+  float monK = isMon ? 0.32 : 1.0; // the monster reads mostly by rim/silhouette, not direct key light
+
+  // cheap AO for the final face-reveal only (a handful of extra map() samples along the normal,
+  // negligible cost over the whole shot since it's gated to ~7 frames) — carves real shadow into
+  // the eye sockets / mouth instead of a flat wash.
+  float ao = 1.0;
+  if (finalPhase){
+    float occ = 0.0, wgt = 1.0, step_ = .045;
+    for (int i = 1; i <= 4; i++){
+      float sd = float(i) * step_;
+      float sc = map(p + n * sd).x;
+      occ += wgt * max(0.0, sd - sc);
+      wgt *= 0.6;
+    }
+    ao = clamp(1.0 - occ * 4.6, 0.05, 1.0);
+  }
+
   // the character's own flashlight, mounted at the camera, slight independent handheld sway
   vec3 flDir = normalize(rd + vec3(sin(t*2.3)*.02, cos(t*1.9)*.015, 0.));
   vec3 flPos = ro + vec3(.10,-.06,.05);
   {
-    vec3 L = p - flPos; float dist = max(length(L), .4);
+    vec3 L = p - flPos; float dist = max(length(L), .5);
     float cone = spotLight(p, flPos, flDir, .82, .965) * flashCookie(p, flPos, flDir);
     float ndotl = max(dot(n, -L/dist), 0.);
-    float flPow = finalPhase ? 1.0 : 0.62;
-    col += alb * ndotl * cone * flPow * vec3(1.0,.97,.92) * 3.6;
+    float flPow = finalPhase ? (isMon ? 0.14 : 0.02) : 0.5;
+    col += alb * ndotl * cone * flPow * monK * ao * vec3(1.0,.97,.92) * 3.0;
   }
 
   // fluorescent fixtures: most are dead. only a sparse deterministic subset ever lights up,
@@ -167,40 +184,43 @@ vec3 render(vec2 fc){
       float alive = step(0.62, hash11(float(k)*7.13 + 4.0));
       if (alive < .5) continue;
       vec3 lp = vec3(0., ROOMH-.1, fkz);
-      vec3 L = lp - p; float dist = max(length(L), .6);
-      if (dist > 6.5) continue;
-      float atten = lightI / (1. + dist*dist*1.7);
+      vec3 L = lp - p; float dist = max(length(L), .7);
+      if (dist > 5.5) continue;
+      float atten = lightI / (1. + dist*dist*2.6);
       float ndotl = max(dot(n, L/dist), 0.);
-      col += alb * ndotl * atten * vec3(.8,.9,1.0) * 3.0;
+      col += alb * ndotl * atten * monK * vec3(.8,.9,1.0) * 1.7;
       // fake haze glow around the pool, cheap (no extra march)
-      col += vec3(.5,.6,.75) * atten * atten * .4;
+      col += vec3(.5,.6,.75) * atten * atten * .18;
     }
   }
 
   // harsh flashlight-driven under/front light for the final face-reveal (camera is right on it)
   if (finalPhase){
-    vec3 lp = ro + vec3(.08,-.2,.35);
-    vec3 L = lp - p; float dist = max(length(L), .25);
-    float atten = closeUp / (1. + dist*dist*2.2);
-    col += alb * max(dot(n, L/dist),0.) * atten * vec3(1.2,1.0,.8) * 3.4;
+    vec3 lp = ro + vec3(.05,-.55,.15);
+    vec3 L = lp - p; float dist = max(length(L), .5);
+    float atten = closeUp / (1. + dist*dist*3.4) * (isMon ? 1.0 : 0.08);
+    col += alb * max(dot(n, L/dist),0.) * atten * ao * vec3(1.2,1.0,.8) * 4.4;
   }
 
   // monster: keep it mostly in shadow — a rim from whatever light is behind it, face reads dark
   // unless the flashlight is square on it (close phases / final)
   if (isMon){
     float rim = pow(1.0 - max(dot(n, -rd), 0.), 2.5);
-    col += vec3(.35,.4,.5) * rim * (lightI*.35 + .04);
+    col += vec3(.3,.35,.45) * rim * (lightI*.3 + .03);
   }
 
-  // cold volumetric haze: thicker with distance, and glowing where the flashlight cone crosses it
-  float hazeAmt = 1.0 - exp(-d * 0.05);
+  // cold volumetric haze: thicker with distance, and glowing where the flashlight cone crosses it.
+  // during the final reveal the background must read as flat black, not fog.
+  float hazeRate = finalPhase ? 0.32 : 0.05;
+  float hazeAmt = 1.0 - exp(-d * hazeRate);
   vec3 hazeCol = vec3(.006,.007,.009);
-  {
+  if (!finalPhase){
     vec3 L = p - flPos; float dist = max(length(L), .4);
     float cone = spotLight(p, flPos, flDir, .8, .96);
     hazeCol += vec3(.35,.38,.42) * cone * .05 * min(d, 8.0);
   }
-  col = mix(col, hazeCol, clamp(hazeAmt, 0., finalPhase ? 0.97 : 0.9));
+  col = mix(col, hazeCol, clamp(hazeAmt, 0., finalPhase ? 0.985 : 0.9));
 
+  if (finalPhase) return vec3(col.r, isMon ? 1.0 : 0.0, ao);
   return col;
 }

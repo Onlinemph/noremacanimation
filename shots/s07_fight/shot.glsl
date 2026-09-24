@@ -76,7 +76,20 @@ vec2 fSpawnXZ(int i){
   );
   return a[i];
 }
-vec2 fTargetXZ(int i){ return i == 8 ? vec2(.1, 1.35) : vec2(0., -.2); }
+// Each monster is shot while still several meters out; only the last (index 8,
+// the point-blank kill) is allowed to close to near-camera range. Targets must
+// stay well clear of the camera origin (z ~ -0.35) or the raymarch starts
+// inside solid geometry and the whole frame goes black.
+vec2 fTargetXZ(int i){
+  vec2 a[9] = vec2[9](
+    vec2(-.15, 2.6), vec2(.25, 3.4),
+    vec2(-.5, 3.0), vec2(.5, 3.6),
+    vec2(-.4, 2.8), vec2(.45, 3.2),
+    vec2(-.2, 2.4), vec2(.35, 3.0),
+    vec2(.15, 1.75)
+  );
+  return a[i];
+}
 
 vec2 fightPosXZ(int i, float t){
   float t0 = fChargeT(i), t1 = fKillT(i);
@@ -255,8 +268,8 @@ vec3 shade(vec3 p, vec3 n, vec3 rd, float m, float seed){
     vec3 mpos = gGunPos + gFwd * .62;
     vec3 L3 = normalize(mpos - p);
     float d3 = length(mpos - p);
-    lit += vec3(1., .82, .55) * mf * max(dot(n, L3), 0.) * 16. / (1. + d3 * d3 * .5);
-    if (isGun) lit += vec3(1., .8, .55) * mf * 1.5;
+    lit += vec3(1., .82, .55) * mf * max(dot(n, L3), 0.) * 9. / (1. + d3 * d3 * .6);
+    if (isGun) lit += vec3(1., .8, .55) * mf * 1.2;
   }
 
   // AK / PPSh strobing muzzle flashes from off-screen left
