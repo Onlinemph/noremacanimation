@@ -2,7 +2,7 @@
 export default {
   duration: 13,
   fps: 24,
-  sceneScale: 0.7,
+  sceneScale: 0.64,
 
   // uP[0] = 1 after the hard cut: skip the scene entirely
   params(t) { return [t >= 11.2 ? 1 : 0]; },

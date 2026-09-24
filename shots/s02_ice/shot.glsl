@@ -306,12 +306,12 @@ vec3 shadeCat(vec3 ro, vec3 rd, vec3 rol, vec3 rdl, float tv, float mat, float t
   vec3 gp = pw + nw * 1.2; gp.y = 0.;
   E += lampsAt(gp, vec3(0., 1., 0.), rd) * .7 * .5 * (.55 - .45 * nw.y) * ao;                     // glow of lit spindrift
   vec3 tc = (gTL0 + gTL1) * .5 - gFW * .6; vec3 dtl = tc - pw;            // tail light spill on the rear
-  E += TLCOL * .9 * max(dot(nw, normalize(dtl)), 0.) / (1. + dot(dtl, dtl) * 3.);
+  E += TLCOL * .3 * max(dot(nw, normalize(dtl)), 0.) / (1. + dot(dtl, dtl) * 8.);
   E += extraLight(pw, nw);
   col = alb * E + emis;
   // rim: the lit spindrift just behind the silhouette wraps around the edges
   float rimF = pow(1. - max(dot(nw, V), 0.), 3.);
-  col += lampsAt(pw + rd * 1.2 + nw * .3, vec3(0.), rd) * rimF * .16 * (.3 + .7 * alb.r + spec);
+  col += min(lampsAt(pw + rd * .6 + nw * .5, vec3(0.), rd), vec3(2.)) * rimF * .16 * (.3 + .7 * alb.r + spec);
   // panel seams: doors, hood, cargo box
   if (mat == MB_PAINT && abs(nl.x) > .7){
     float seam = smoothstep(.012, .0, abs(pl.z - 1.22)) + smoothstep(.012, .0, abs(pl.z - .12)) * step(1.05, pl.y) + smoothstep(.012, .0, abs(pl.y - 1.66)) + smoothstep(.012, .0, abs(pl.z + 2.1)) * step(1.7, pl.y);

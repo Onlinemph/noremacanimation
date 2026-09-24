@@ -505,11 +505,11 @@ vec3 tankComposite(int i, vec3 ro, vec3 rd, float t0, float t1, float tOp, vec3 
   // --- figure inside
   float tm = -1.;
   float tt = t0 + .01;
-  for (int k = 0; k < 48; k++){
+  for (int k = 0; k < 36; k++){
     vec3 p = ro + rd * tt;
     float dd = figMap(i, p).x;
     if (dd < .0015 * tt) { tm = tt; break; }
-    tt += max(dd * .9, .004);
+    tt += max(dd, .006);
     if (tt > tEnd) break;
   }
   float tB = tm > 0. ? tm : tEnd;
@@ -707,29 +707,7 @@ vec3 render(vec2 fc){
   vec3 ta = (omin - ro) / rd, tc = (omax - ro) / rd;
   vec3 tn = min(ta, tc), tf = max(ta, tc);
   float tIn = max(max(tn.x, tn.y), max(tn.z, 0.)), tOut = min(min(tf.x, tf.y), tf.z);
-  float tEndM = min(tRoom, tOut);
-  float d = tIn; vec2 h = vec2(0.); bool hit = false;
-  if (tIn < tEndM){
-    for (int i = 0; i < 80; i++){
-      vec3 p = ro + rd * d;
-      h = map(p);
-      if (h.x < .0015 * d) { hit = true; break; }
-      d += h.x * .92;
-      if (d > tEndM) break;
-    }
-  }
-  vec3 col = vec3(0.);
-  vec3 n;
-  if (!hit){ d = tRoom; h = vec2(0., mRoom); n = nRoom; }
-  else n = nrm(ro + rd * d);
-  {
-    vec3 p = ro + rd * d;
-    col = shadeScene(h, p, n, rd);
-    col *= mix(.3, 1., calcAO(p, n));
-  }
-  col *= exp(-max(d - 4., 0.) * .25);
-
-  // nearest tank the ray passes through (glass side only)
+  // nearest tank the ray enters through its glass side
   float bestT = 1e5, bestT1 = 0.; int bi = -1;
   for (int i = 0; i < 4; i++){
     if (i == 3 && iTime > T_BURST) continue;
@@ -740,9 +718,49 @@ vec3 render(vec2 fc){
     float sq = sqrt(disc);
     float t0 = (-b - sq) / a, t1 = (-b + sq) / a;
     float y0 = ro.y + rd.y * t0;
-    if (t0 > 0. && t0 < d && t0 < bestT && y0 > TY0 && y0 < TY1){ bestT = t0; bestT1 = t1; bi = i; }
+    if (t0 > 0. && t0 < bestT && y0 > TY0 && y0 < TY1){ bestT = t0; bestT1 = t1; bi = i; }
   }
-  if (bi >= 0) col = tankComposite(bi, ro, rd, bestT, bestT1, d, col, dither);
+  float tEndM = min(min(tRoom, tOut), bestT);
+  float d = tIn; vec2 h = vec2(0.); bool hit = false;
+  if (tIn < tEndM){
+    for (int i = 0; i < 64; i++){
+      vec3 p = ro + rd * d;
+      h = map(p);
+      if (h.x < .002 * d) { hit = true; break; }
+      d += h.x;
+      if (d > tEndM) break;
+    }
+  }
+  vec3 col = vec3(0.);
+  if (!hit && bi >= 0 && bestT < tRoom){
+    // inside a tank: what lies behind the liquid is resolved analytically
+    vec3 c = tankC(bi);
+    float I = tankI(bi);
+    float tExit = bestT1;
+    vec3 behind = vec3(.004, .01, .006);
+    if (rd.y < 0.){
+      float tp = (TY0 - ro.y) / rd.y;
+      if (tp < tExit){
+        tExit = tp;
+        vec3 q = ro + rd * tp - c;
+        float grate = step(.3, abs(fract(q.x * 14.) - .5)) * step(.3, abs(fract(q.z * 14.) - .5));
+        behind = GREEN * I * (.6 + 2.2 * grate) * smoothstep(TR, TR * .2, length(q.xz));
+      }
+    } else {
+      float tp = (TY1 - ro.y) / rd.y;
+      if (tp < tExit){ tExit = tp; behind = GREEN * I * .06; }
+    }
+    d = tExit;
+    col = tankComposite(bi, ro, rd, bestT, bestT1, tExit, behind, dither);
+  } else {
+    vec3 n;
+    if (!hit){ d = tRoom; h = vec2(0., mRoom); n = nRoom; }
+    else n = nrm(ro + rd * d);
+    vec3 p = ro + rd * d;
+    col = shadeScene(h, p, n, rd);
+    
+    col *= exp(-max(d - 4., 0.) * .25);
+  }
 
   // glowing fog around the tanks (analytic) and in the flashlight beam
   float tmax = min(d, 14.);
