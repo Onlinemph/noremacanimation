@@ -18,7 +18,7 @@ export default {
     const pass = Math.exp(-(((t - 9.8) / 0.6) ** 2));
     return {
       bar: 0.12,
-      grain: 0.065,
+      grain: 0.05,
       aberr: 0.0016,
       vignette: 1.05,
       bloom: 0.45,

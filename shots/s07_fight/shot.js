@@ -1,119 +1,116 @@
-// s07_fight — first-person KS-23 corridor firefight. See shot.glsl header for
-// the full scripted timeline; every envelope below must stay in sync with it
-// and with cues.json.
+// s07_fight — first person, KS-23, red-lit corridor. The staff charge.
+// The fight is scripted here; shot.glsl carries the same monster timings (see MONSTER SCRIPT there),
+// and cues.json is generated from this file by `node shots/s07_fight/make_cues.mjs`.
 
-const KS23 = [5.00, 10.6, 14.2, 17.0];
-const AK = [[8.4, .45], [11.6, .5], [15.3, .45]];
-const PPSH = [[9.3, .4], [13.0, .45], [16.4, .4]];
-const FLARE_LAUNCH = 18.3, FLARE_LAND = 19.6;
-const TURN_T = 22.6;
-const FADE_START = 22.8, FADE_END = 23.6;
+export const KS = [5.0, 9.6, 12.0, 15.6];                 // KS-23 shots (Hollis)
+export const AK = [[6.55, 7.15], [13.0, 13.6]];            // AKS-74U bursts from the left (Volkov)
+export const PPSH = [[10.4, 11.2]];                        // PPSh-41 burst from the left (Lundqvist)
+export const FLARE = 18.3, FLARE_LAND = 19.2;
+export const AK_RPM = 700, PPSH_RPM = 950;
 
-// Ramps up to 1 *before* t0 so the scripted event frame itself (t0) is already
-// at full strength (muzzle flashes/recoil must read on the exact cue frame).
-function pulse(t, t0, attack, hold, decay) {
-  if (t < t0 - attack) return 0;
-  if (t < t0) return (t - (t0 - attack)) / attack;
-  const dt = t - t0;
-  if (dt < hold) return 1;
-  const d = dt - hold;
-  if (d < decay) return 1 - d / decay;
-  return 0;
+const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
+const smooth = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
+
+export function rounds() {
+  const r = [];
+  for (const [a, b] of AK) for (let t = a; t < b; t += 60 / AK_RPM) r.push({ t, gun: 'ak' });
+  for (const [a, b] of PPSH) for (let t = a; t < b; t += 60 / PPSH_RPM) r.push({ t, gun: 'ppsh' });
+  return r.sort((x, y) => x.t - y.t);
 }
-function tri(t, t0, dur) {
-  if (t < t0 || t > t0 + dur) return 0;
-  const x = (t - t0) / dur;
-  return x < .5 ? x / .5 : (1 - x) / .5;
-}
-function maxOf(arr) { return arr.reduce((a, b) => Math.max(a, b), 0); }
+const ROUNDS = rounds();
 
-function burstEnv(t, bursts, freq) {
-  let v = 0;
-  for (const [t0, dur] of bursts) {
-    if (t < t0 || t > t0 + dur) continue;
-    const edge = Math.min((t - t0) / .03, (t0 + dur - t) / .03, 1);
-    v = Math.max(v, edge * (.55 + .45 * Math.abs(Math.sin((t - t0) * freq))));
+// aim keyframes: where Hollis points the gun (world space)
+const AIM = [
+  [0.0, [0.0, 1.35, 16]], [3.6, [0.25, 1.3, 13.5]], [4.6, [0.3, 1.2, 10]], [5.0, [0.3, 1.15, 8.6]],
+  [6.0, [-0.3, 1.25, 11]], [7.4, [0.6, 1.2, 9]], [8.6, [1.3, 1.2, 8]], [9.6, [0.45, 1.15, 5.6]],
+  [10.6, [0, 1.25, 9]], [12.0, [0.05, 1.15, 6.6]], [13.2, [0.2, 1.3, 11]], [14.8, [-0.3, 1.3, 4]],
+  [15.6, [-0.35, 1.35, 2.3]], [16.6, [0, 1.3, 8]], [18.2, [0, 1.35, 14]], [19.4, [-0.2, 1.1, 16]], [24, [0, 1.2, 16.5]],
+];
+function aim(t) {
+  for (let i = 0; i < AIM.length - 1; i++) {
+    const [t0, a] = AIM[i], [t1, b] = AIM[i + 1];
+    if (t >= t0 && t < t1) { const k = smooth(t0, t1, t); return a.map((v, j) => v + (b[j] - v) * k); }
   }
-  return v;
+  return AIM[AIM.length - 1][1];
+}
+
+function ksState(t) {
+  let flash = 0, recoil = 0, pump = 0;
+  for (const s of KS) {
+    const d = t - s;
+    if (d >= 0 && d < 0.09) flash = Math.max(flash, 1 - d / 0.09);
+    if (d >= 0 && d < 0.5) recoil = Math.max(recoil, d < 0.04 ? d / 0.04 : Math.exp(-(d - 0.04) * 9));
+    if (d >= 0.3 && d < 0.72) pump = Math.max(pump, Math.sin(Math.PI * (d - 0.3) / 0.42));
+  }
+  return [flash, recoil, pump];
+}
+function leftGun(t) {
+  let flash = 0, since = -1;
+  for (const r of ROUNDS) {
+    const d = t - r.t;
+    if (d >= 0 && d < 0.035) flash = 1;
+    if (d >= 0 && (since < 0 || d < since)) since = d;
+  }
+  return [flash, since];
 }
 
 export default {
   duration: 24,
-  sceneScale: 0.75,
+  fps: 24,
+  sceneScale: 0.7,
 
   params(t) {
-    const recoilEnv = maxOf(KS23.map(s => pulse(t, s, .02, .03, .30)));
-    const pumpEnv = maxOf(KS23.map(s => tri(t, s + .08, .35)));
-    const muzzleFlashEnv = maxOf(KS23.map(s => pulse(t, s, .008, .02, .06)));
-    const pointBlankEnv = pulse(t, 17.0, .01, .15, .5);
-    const akFlashEnv = burstEnv(t, AK, 62);
-    const ppshFlashEnv = burstEnv(t, PPSH, 85);
-    const flareProgress = t < FLARE_LAUNCH ? 0 : Math.min(1, (t - FLARE_LAUNCH) / (FLARE_LAND - FLARE_LAUNCH));
-    const landedRamp = Math.min(1, Math.max(0, (t - FLARE_LAND) / .12));
-    const flareGroundPulse = t < FLARE_LAND ? 0 : landedRamp * (.75 + .25 * Math.sin((t - FLARE_LAND) * 6.0));
-    const revealEnv = Math.min(1, Math.max(0, (t - FLARE_LAND) / .6));
-    const turnFlash = pulse(t, TURN_T, .05, .1, .4);
-    return [recoilEnv, pumpEnv, muzzleFlashEnv, pointBlankEnv, akFlashEnv, ppshFlashEnv, flareProgress, flareGroundPulse, revealEnv, turnFlash];
+    const [ksFlash, recoil, pump] = ksState(t);
+    const [lf, since] = leftGun(t);
+    const a = aim(t);
+    const flareK = clamp((t - FLARE) / (FLARE_LAND - FLARE), 0, 1);
+    const flareOn = t >= FLARE ? (t < FLARE_LAND ? 0.6 : 1) : 0;
+    const lens = t >= 15.6 ? Math.min(1, (t - 15.6) / 0.05) : 0;
+    const turn = smooth(21.2, 22.0, t), run = smooth(22.6, 23.2, t);
+    return [ksFlash, pump, recoil, lf, since > 0.12 ? -1 : since, 0, flareOn, flareK, lens, turn, run, a[0], a[1], a[2], t, 0];
   },
 
   post(t) {
-    const [recoilEnv, , muzzleFlashEnv, pointBlankEnv, akFlashEnv, ppshFlashEnv, , , revealEnv, turnFlash] = this.params(t);
-    const shake = .20 + (t >= 4 && t < 18 ? .13 : 0) + recoilEnv * 1.5 + pointBlankEnv * .9 + akFlashEnv * .28 + ppshFlashEnv * .28;
-    const flashSum = Math.min(.85, muzzleFlashEnv * .6 + akFlashEnv * .28 + ppshFlashEnv * .28 + turnFlash * .4);
-    const warm = muzzleFlashEnv, cool = akFlashEnv + ppshFlashEnv, red = turnFlash;
-    const wsum = Math.max(.0001, warm + cool + red);
-    const flashColor = [
-      (warm * 1.0 + cool * .85 + red * 1.0) / wsum,
-      (warm * .8 + cool * .9 + red * .18) / wsum,
-      (warm * .55 + cool * 1.0 + red * .32) / wsum,
-    ];
-    let fade = 0;
-    if (t > FADE_START) fade = Math.min(1, (t - FADE_START) / (FADE_END - FADE_START));
-    return {
-      grain: .06 + pointBlankEnv * .03,
-      aberr: .0016 + recoilEnv * .001,
-      vignette: .85,
-      shake,
-      exposure: .72 + muzzleFlashEnv * .12 + revealEnv * .18,
-      flash: flashSum * .6,
-      flashColor,
-      fade,
-      bloom: .36 + muzzleFlashEnv * .15 + revealEnv * .1,
-      bar: 0.12,
-      sat: Math.max(.5, .78 - pointBlankEnv * .15),
-      contrast: 1.32,
-      temp: -.12 + muzzleFlashEnv * .5 + (akFlashEnv + ppshFlashEnv) * .15 - revealEnv * .1,
-      lift: [-.015 + revealEnv * .015, -.01, .012 - revealEnv * .008],
-    };
+    const [ksFlash, recoil] = ksState(t);
+    const [lf] = leftGun(t);
+    const p = { bar: 0.12, grain: 0.09, vignette: 1.15, bloom: 0.55, aberr: 0.0018, temp: 0.05, contrast: 1.12, sat: 0.9, exposure: 1.1 };
+    p.shake = 0.9 * recoil + 0.15 * lf + 0.04;
+    p.flash = ksFlash * 0.07 + lf * 0.02;
+    p.flashColor = [1, 0.75, 0.45];
+    p.aberr += 0.004 * recoil;
+    if (t >= 23.6) p.fade = 1;
+    return p;
   },
 
   overlay(ctx, t, W, H) {
+    // blood on the lens after the point-blank shot
+    if (t < 15.6 || t >= 23.6) return;
     const s = W / 1280;
-    // blood spatter hits the lens once, right after the 14.2s KS-23 shot
-    const t0 = 14.28, holdEnd = 17.2, fadeEnd = 19.5;
-    let a = 0;
-    if (t > t0 && t < fadeEnd) {
-      a = t < t0 + .06 ? (t - t0) / .06 : (t < holdEnd ? 1 : 1 - (t - holdEnd) / (fadeEnd - holdEnd));
-    }
-    if (a > 0.01) {
-      const drops = [
-        [230, 140, 46], [980, 210, 34], [140, 430, 38], [1080, 460, 30],
-        [560, 90, 26], [720, 520, 42], [340, 610, 24],
-      ];
-      ctx.save();
-      ctx.globalAlpha = a;
-      for (const [dx, dy, r] of drops) {
-        const x = dx * s, y = dy * s, rr = r * s;
-        const g = ctx.createRadialGradient(x, y, 0, x, y, rr);
-        g.addColorStop(0, 'rgba(60,4,4,0.85)');
-        g.addColorStop(.6, 'rgba(40,2,2,0.55)');
-        g.addColorStop(1, 'rgba(40,2,2,0)');
-        ctx.fillStyle = g;
-        ctx.beginPath(); ctx.ellipse(x, y, rr, rr * 1.5, 0, 0, Math.PI * 2); ctx.fill();
-        ctx.fillStyle = 'rgba(50,3,3,0.6)';
-        ctx.fillRect(x - rr * .12, y, rr * .24, rr * 1.8);
+    const age = t - 15.6;
+    const a = Math.min(1, age / 0.05) * (0.62 - 0.22 * Math.min(1, age / 8));
+    const drops = [[0.62, 0.28, 60], [0.7, 0.4, 28], [0.55, 0.36, 22], [0.78, 0.22, 34], [0.48, 0.2, 16], [0.83, 0.5, 20], [0.66, 0.55, 12], [0.4, 0.3, 10]];
+    ctx.save();
+    ctx.globalAlpha = a;
+    ctx.filter = `blur(${2 * s}px)`;
+    drops.forEach(([x, y, r], i) => {
+      const cx = x * W, cy = y * H, rr = r * s;
+      ctx.fillStyle = 'rgba(70,4,4,0.9)';
+      ctx.beginPath(); ctx.ellipse(cx, cy, rr, rr * 0.8, i, 0, Math.PI * 2); ctx.fill();
+      // satellite spatter
+      for (let k = 0; k < 6; k++) {
+        const ang = i * 2.1 + k * 1.05, dist = rr * (1.2 + (k % 3) * 0.5);
+        ctx.beginPath(); ctx.arc(cx + Math.cos(ang) * dist, cy + Math.sin(ang) * dist, rr * 0.12 * (1 + (k % 2)), 0, 7); ctx.fill();
       }
-      ctx.restore();
-    }
+      // drips running down the glass
+      const run = Math.min(1, age / 3) * rr * (2 + (i % 3));
+      ctx.fillRect(cx - rr * 0.12, cy, rr * 0.24, run);
+      ctx.beginPath(); ctx.arc(cx, cy + run, rr * 0.16, 0, 7); ctx.fill();
+    });
+    // a faint highlight so it reads as liquid on glass
+    ctx.filter = 'none';
+    ctx.globalAlpha = a * 0.25;
+    ctx.fillStyle = 'rgba(255,200,180,1)';
+    drops.slice(0, 4).forEach(([x, y, r]) => { ctx.beginPath(); ctx.arc(x * W - r * s * 0.3, y * H - r * s * 0.3, r * s * 0.18, 0, 7); ctx.fill(); });
+    ctx.restore();
   },
 };

@@ -1,67 +1,250 @@
 {
-  "ambience": "interior_dead",
-  "cues": [
-    { "t": 0.5, "type": "breath", "gain": 0.7 },
-    { "t": 1.6, "type": "heartbeat", "gain": 0.5 },
-    { "t": 2.8, "type": "breath", "gain": 0.7 },
-    { "t": 3.3, "type": "growl", "gain": 0.9, "dur": 0.8 },
-    { "t": 4.0, "type": "shriek", "gain": 1.0 },
-    { "t": 4.05, "type": "footsteps", "gain": 0.8, "dur": 4.0 },
-
-    { "t": 5.0, "type": "ks23_shot", "gain": 1.0 },
-    { "t": 5.0, "type": "gore_hit", "gain": 1.0 },
-    { "t": 5.08, "type": "pump_rack", "gain": 0.9 },
-    { "t": 5.6, "type": "body_fall", "gain": 0.9 },
-
-    { "t": 8.4, "type": "ak_burst", "gain": 1.0, "dur": 0.45 },
-    { "t": 8.4, "type": "gore_hit", "gain": 0.9 },
-    { "t": 8.85, "type": "body_fall", "gain": 0.8 },
-
-    { "t": 9.3, "type": "ppsh_burst", "gain": 1.0, "dur": 0.4 },
-    { "t": 9.3, "type": "gore_hit", "gain": 0.85 },
-    { "t": 9.7, "type": "body_fall", "gain": 0.8 },
-
-    { "t": 10.6, "type": "ks23_shot", "gain": 1.0 },
-    { "t": 10.6, "type": "gore_hit", "gain": 1.0 },
-    { "t": 10.68, "type": "pump_rack", "gain": 0.9 },
-    { "t": 11.0, "type": "body_fall", "gain": 0.9 },
-
-    { "t": 11.6, "type": "ak_burst", "gain": 1.0, "dur": 0.5 },
-    { "t": 11.6, "type": "gore_hit", "gain": 0.9 },
-    { "t": 12.05, "type": "body_fall", "gain": 0.8 },
-
-    { "t": 13.0, "type": "ppsh_burst", "gain": 1.0, "dur": 0.45 },
-    { "t": 13.0, "type": "gore_hit", "gain": 0.85 },
-    { "t": 13.45, "type": "body_fall", "gain": 0.8 },
-
-    { "t": 14.2, "type": "ks23_shot", "gain": 1.0 },
-    { "t": 14.2, "type": "gore_hit", "gain": 1.0 },
-    { "t": 14.28, "type": "impact", "gain": 0.6 },
-    { "t": 14.28, "type": "pump_rack", "gain": 0.9 },
-    { "t": 14.6, "type": "body_fall", "gain": 0.9 },
-
-    { "t": 15.3, "type": "ak_burst", "gain": 1.0, "dur": 0.45 },
-    { "t": 15.3, "type": "gore_hit", "gain": 0.9 },
-    { "t": 15.75, "type": "body_fall", "gain": 0.8 },
-
-    { "t": 16.4, "type": "ppsh_burst", "gain": 0.9, "dur": 0.4 },
-    { "t": 16.4, "type": "gore_hit", "gain": 0.5 },
-
-    { "t": 17.0, "type": "ks23_shot", "gain": 1.0 },
-    { "t": 17.0, "type": "gore_hit", "gain": 1.0 },
-    { "t": 17.08, "type": "pump_rack", "gain": 0.9 },
-    { "t": 17.3, "type": "body_fall", "gain": 1.0 },
-
-    { "t": 18.3, "type": "flare_shot", "gain": 1.0 },
-    { "t": 18.4, "type": "whoosh", "gain": 0.7, "dur": 1.2 },
-    { "t": 19.6, "type": "impact", "gain": 0.5 },
-
-    { "t": 20.4, "type": "drone_swell", "gain": 0.9, "dur": 3.0 },
-    { "t": 20.6, "type": "stinger", "gain": 1.0 },
-    { "t": 21.0, "type": "heartbeat", "gain": 0.6 },
-    { "t": 21.8, "type": "heartbeat", "gain": 0.7 },
-    { "t": 22.4, "type": "heartbeat", "gain": 0.8 },
-    { "t": 22.6, "type": "stinger", "gain": 0.7 },
-    { "t": 23.0, "type": "breath", "gain": 0.9 }
-  ]
+ "ambience": "interior_dead",
+ "cues": [
+  {
+   "t": 0,
+   "type": "heartbeat",
+   "gain": 0.45,
+   "dur": 4
+  },
+  {
+   "t": 0.2,
+   "type": "breath",
+   "gain": 0.5,
+   "dur": 3.6
+  },
+  {
+   "t": 1.5,
+   "type": "growl",
+   "gain": 0.35,
+   "dur": 1.8
+  },
+  {
+   "t": 3.4,
+   "type": "growl",
+   "gain": 0.6,
+   "dur": 1.2
+  },
+  {
+   "t": 4,
+   "type": "shriek",
+   "gain": 0.8
+  },
+  {
+   "t": 4.1,
+   "type": "footsteps",
+   "gain": 0.6,
+   "dur": 1
+  },
+  {
+   "t": 4.5,
+   "type": "shriek",
+   "gain": 0.6
+  },
+  {
+   "t": 5,
+   "type": "ks23_shot",
+   "gain": 1
+  },
+  {
+   "t": 5.02,
+   "type": "gore_hit",
+   "gain": 0.9
+  },
+  {
+   "t": 5.3,
+   "type": "pump_rack",
+   "gain": 0.9
+  },
+  {
+   "t": 5.75,
+   "type": "body_fall",
+   "gain": 0.8
+  },
+  {
+   "t": 6.55,
+   "type": "ak_burst",
+   "gain": 0.9,
+   "dur": 0.6
+  },
+  {
+   "t": 6.9,
+   "type": "gore_hit",
+   "gain": 0.6
+  },
+  {
+   "t": 7.4,
+   "type": "body_fall",
+   "gain": 0.7
+  },
+  {
+   "t": 8,
+   "type": "shriek",
+   "gain": 0.7
+  },
+  {
+   "t": 8.5,
+   "type": "growl",
+   "gain": 0.8,
+   "dur": 1.5
+  },
+  {
+   "t": 9.6,
+   "type": "ks23_shot",
+   "gain": 1
+  },
+  {
+   "t": 9.62,
+   "type": "gore_hit",
+   "gain": 0.9
+  },
+  {
+   "t": 9.9,
+   "type": "pump_rack",
+   "gain": 0.9
+  },
+  {
+   "t": 10.2,
+   "type": "body_fall",
+   "gain": 0.8
+  },
+  {
+   "t": 10.4,
+   "type": "ppsh_burst",
+   "gain": 0.9,
+   "dur": 0.8
+  },
+  {
+   "t": 11,
+   "type": "gore_hit",
+   "gain": 0.6
+  },
+  {
+   "t": 11.5,
+   "type": "body_fall",
+   "gain": 0.7
+  },
+  {
+   "t": 12,
+   "type": "ks23_shot",
+   "gain": 1
+  },
+  {
+   "t": 12.02,
+   "type": "gore_hit",
+   "gain": 0.9
+  },
+  {
+   "t": 12.3,
+   "type": "pump_rack",
+   "gain": 0.9
+  },
+  {
+   "t": 12.5,
+   "type": "shriek",
+   "gain": 0.9
+  },
+  {
+   "t": 12.6,
+   "type": "body_fall",
+   "gain": 0.8
+  },
+  {
+   "t": 13,
+   "type": "ak_burst",
+   "gain": 0.9,
+   "dur": 0.6
+  },
+  {
+   "t": 13.4,
+   "type": "gore_hit",
+   "gain": 0.6
+  },
+  {
+   "t": 13.9,
+   "type": "body_fall",
+   "gain": 0.7
+  },
+  {
+   "t": 14.6,
+   "type": "growl",
+   "gain": 1,
+   "dur": 1
+  },
+  {
+   "t": 15.6,
+   "type": "ks23_shot",
+   "gain": 1
+  },
+  {
+   "t": 15.62,
+   "type": "gore_hit",
+   "gain": 0.9
+  },
+  {
+   "t": 15.9,
+   "type": "pump_rack",
+   "gain": 0.9
+  },
+  {
+   "t": 16,
+   "type": "breath",
+   "gain": 0.8,
+   "dur": 2.2
+  },
+  {
+   "t": 16.2,
+   "type": "heartbeat",
+   "gain": 0.7,
+   "dur": 2
+  },
+  {
+   "t": 16.4,
+   "type": "body_fall",
+   "gain": 1
+  },
+  {
+   "t": 18.3,
+   "type": "flare_shot",
+   "gain": 1
+  },
+  {
+   "t": 19.2,
+   "type": "impact",
+   "gain": 0.4
+  },
+  {
+   "t": 19.2,
+   "type": "drone_swell",
+   "gain": 0.9,
+   "dur": 3
+  },
+  {
+   "t": 21.2,
+   "type": "growl",
+   "gain": 0.9,
+   "dur": 1.4
+  },
+  {
+   "t": 22,
+   "type": "stinger",
+   "gain": 1
+  },
+  {
+   "t": 22.6,
+   "type": "shriek",
+   "gain": 1
+  },
+  {
+   "t": 22.8,
+   "type": "shriek",
+   "gain": 0.8
+  },
+  {
+   "t": 23,
+   "type": "footsteps",
+   "gain": 0.9,
+   "dur": 0.6
+  }
+ ]
 }

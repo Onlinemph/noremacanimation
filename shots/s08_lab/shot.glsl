@@ -184,53 +184,54 @@ vec2 lungeMap(vec3 p){
 
 // ------------------------------------------------------------ scene ------
 vec2 map(vec3 p){
-  vec2 r = vec2(p.y, MF_FLOOR);
-  r = opU(r, vec2(3.3 - p.y, MF_CEIL));
-  r = opU(r, vec2(3.05 - p.x, MF_WALL));
-  r = opU(r, vec2(p.x + 2.4, MF_WALL));
-  r = opU(r, vec2(8.6 - p.z, MF_WALL));
-  r = opU(r, vec2(p.z + 3.2, MF_WALL));
+  // room planes are intersected analytically in render(); this is objects only
+  vec2 r = vec2(1e5, 0.);
 
-  // ---- tank hardware (domain repetition along z)
+  // ---- tank hardware (domain repetition along z), nested bounds
   float ci = clamp(floor((p.z - TZ0) / TSP + .5), 0., 3.);
   vec3 q = p - vec3(TX, 0., TZ0 + ci * TSP);
-  if (length(q.xz) < 1.1 || q.y > 2.0){
-    float rr = length(q.xz);
-    // bottom cap: plinth + flange with bolts
-    float bot = sdCylY(q - vec3(0., .19, 0.), .66, .19);
-    bot = min(bot, sdCylY(q - vec3(0., .44, 0.), .6, .06));
+  float rr = length(q.xz);
+  float bT = rr - .72;
+  if (bT > .1) r.x = min(r.x, bT);
+  else {
     float ang = atan(q.z, q.x);
     float sect = (floor(ang / (TAU / 14.)) + .5) * (TAU / 14.);
-    vec3 bq = q - vec3(cos(sect) * .565, .51, sin(sect) * .565);
-    float bolts = sdCylY(bq, .018, .018);
-    // top cap
-    float top = sdCylY(q - vec3(0., TY1 + .07, 0.), .6, .07);
-    top = min(top, sdCylY(q - vec3(0., TY1 + .2, 0.), .5, .08));
-    top = smin(top, sdEllipsoid(q - vec3(0., TY1 + .28, 0.), vec3(.45, .14, .45)), .03);
-    vec3 tq = q - vec3(cos(sect) * .565, TY1 - .01, sin(sect) * .565);
-    bolts = min(bolts, sdCylY(tq, .018, .018));
-    // guide rods between caps (thin, three of them)
-    float a3 = (floor((ang + PI / 3.) / (TAU / 3.)) ) * (TAU / 3.);
-    vec3 gq = q - vec3(cos(a3) * .6, 1.4, sin(a3) * .6);
-    float rods = sdCylY(gq, .014, .92);
-    float capD = min(min(bot, top), rods);
+    vec2 bxz = vec2(cos(sect), sin(sect)) * .565;
+    float capD = 1e5, bolts = 1e5, pv = 1e5;
+    if (q.y < .75){
+      capD = sdCylY(q - vec3(0., .19, 0.), .66, .19);
+      capD = min(capD, sdCylY(q - vec3(0., .44, 0.), .6, .06));
+      bolts = sdCylY(q - vec3(bxz.x, .51, bxz.y), .018, .018);
+    } else if (q.y > 2.1){
+      capD = sdCylY(q - vec3(0., TY1 + .07, 0.), .6, .07);
+      capD = min(capD, sdCylY(q - vec3(0., TY1 + .2, 0.), .5, .08));
+      capD = smin(capD, sdEllipsoid(q - vec3(0., TY1 + .28, 0.), vec3(.45, .14, .45)), .03);
+      bolts = sdCylY(q - vec3(bxz.x, TY1 - .01, bxz.y), .018, .018);
+      pv = sdCylY(q - vec3(.12, 2.9, 0.), .055, .45);
+      pv = min(pv, sdCylY(q - vec3(-.18, 2.8, .1), .035, .5));
+    }
+    // guide rods between caps (three)
+    float a3 = floor((ang + PI / 3.) / (TAU / 3.)) * (TAU / 3.);
+    capD = min(capD, sdCylY(q - vec3(cos(a3) * .6, 1.4, sin(a3) * .6), .014, .92));
     r = opU(r, vec2(capD, MF_CAP));
     r = opU(r, vec2(bolts, MF_PIPE));
-    // pipes: vertical from top to ceiling, elbow + manifold along z near the ceiling
-    float pv = sdCylY(q - vec3(.12, 2.9, 0.), .055, .45);
-    pv = min(pv, sdTorus((q - vec3(.12, 2.4, .0)).xzy, vec2(.0, .0)) + 1e3);
-    pv = min(pv, sdCylY(q - vec3(-.18, 2.8, .1), .035, .5));
-    // lower feed pipe to the back wall
-    pv = min(pv, sdCylX(q - vec3(.95, .22, .18), .05, .4));
-    pv = min(pv, sdCylX(q - vec3(.9, .12, -.2), .035, .45));
-    // valve wheel on the feed pipe
-    pv = min(pv, sdTorus((q - vec3(.8, .22, .18)).yxz, vec2(.08, .012)));
     r = opU(r, vec2(pv, MF_PIPE));
   }
+  // feed pipes + valve to the back wall
+  {
+    float bF = sdBox(q - vec3(.95, .2, 0.), vec3(.45, .14, .32));
+    if (bF > .1) r.x = min(r.x, bF);
+    else {
+      float pv = sdCylX(q - vec3(.95, .22, .18), .05, .4);
+      pv = min(pv, sdCylX(q - vec3(.9, .12, -.2), .035, .45));
+      pv = min(pv, sdTorus((q - vec3(.8, .22, .18)).yxz, vec2(.08, .012)));
+      r = opU(r, vec2(pv, MF_PIPE));
+    }
+  }
   // manifolds along z
-  r = opU(r, vec2(sdCylZ(p - vec3(TX + .12, 3.05, 3.), .09, 6.), MF_PIPE));
-  r = opU(r, vec2(sdCylZ(p - vec3(TX + .92, .2, 3.), .07, 6.), MF_PIPE));
-  r = opU(r, vec2(sdCylZ(p - vec3(2.95, 1.9, 3.), .05, 6.), MF_PIPE));
+  r = opU(r, vec2(sdCylZ(p - vec3(TX + .12, 3.05, 3.), .09, 3.8), MF_PIPE));
+  r = opU(r, vec2(sdCylZ(p - vec3(TX + .92, .2, 3.), .07, 3.8), MF_PIPE));
+  r = opU(r, vec2(sdCylZ(p - vec3(2.95, 1.9, 3.), .05, 3.8), MF_PIPE));
 
   // ---- broken tank 3 after the burst: jagged glass stumps
   if (iTime > T_BURST){
@@ -246,7 +247,9 @@ vec2 map(vec3 p){
   }
 
   // ---- lab bench along the row (between camera and tanks)
-  if (p.x > .0 && p.x < 1.05 && p.z < 3.7 && p.y < 1.6){
+  float bB = sdBox(p - vec3(.52, .8, 1.1), vec3(.42, .82, 2.62));
+  if (bB > .1) r.x = min(r.x, bB);
+  else {
     float bt = sdBox(p - vec3(.52, .9, 1.05), vec3(.36, .025, 2.45));
     r = opU(r, vec2(bt, MF_BTOP));
     vec3 lq = p - vec3(.52, .44, 1.05);
@@ -257,6 +260,8 @@ vec2 map(vec3 p){
     fr = min(fr, sdBox(p - vec3(.55, .45, -.8), vec3(.3, .4, .42)));
     r = opU(r, vec2(fr, MF_FRAME));
     // CRT terminal, screen facing the camera (-x)
+    float bTm = sdBox(p - vec3(.5, 1.12, 1.25), vec3(.36, .24, .3));
+    if (bTm > .05) r.x = min(r.x, bTm); else {
     vec3 tq = p - vec3(.62, 1.13, 1.25);
     float term = sdRoundBox(tq, vec3(.2, .2, .22), .03);
     term = min(term, sdRoundBox(tq - vec3(.2, -.02, 0.), vec3(.14, .15, .16), .05));
@@ -265,7 +270,9 @@ vec2 map(vec3 p){
     r = opU(r, vec2(term, MF_TERM));
     r = opU(r, vec2(sdBox(tq + vec3(.205, 0., 0.), vec3(.004, .13, .16)), MF_SCREEN));
     r = opU(r, vec2(sdRoundBox(p - vec3(.3, .94, 1.2), vec3(.09, .012, .22), .008), MF_TERM)); // keyboard
+    }
     // papers and a clipboard, slightly rotated
+    if (p.y < 1.){
     vec3 pq = p - vec3(.42, .928, -.2); pq.xz *= rot2(.35);
     float pap = sdBox(pq, vec3(.11, .002, .15));
     vec3 pq2 = p - vec3(.55, .929, .35); pq2.xz *= rot2(-.2);
@@ -273,7 +280,10 @@ vec2 map(vec3 p){
     vec3 pq3 = p - vec3(.36, .93, 2.2); pq3.xz *= rot2(.9);
     pap = min(pap, sdBox(pq3, vec3(.105, .003, .148)));
     r = opU(r, vec2(pap, MF_PAPER));
+    }
     // bottles / flasks: silhouettes against the tanks
+    float bBo = sdBox(p - vec3(.62, 1.1, 2.85), vec3(.16, .2, .38));
+    if (bBo > .05) r.x = min(r.x, bBo); else {
     for (int k = 0; k < 4; k++){
       float fk = float(k);
       vec3 bp = p - vec3(.6 + .08 * sin(fk * 3.), .925, 2.55 + fk * .19);
@@ -282,6 +292,7 @@ vec2 map(vec3 p){
       bot = smin(bot, sdCylY(bp - vec3(0., hgt * 2. + .04, 0.), .016, .05), .03);
       if (k == 2) bot = min(sdSphere(bp - vec3(0., .09, 0.), .09), sdCylY(bp - vec3(0., .22, 0.), .02, .07)); // round flask
       r = opU(r, vec2(bot, MF_BOTTLE));
+    }
     }
     // microscope silhouette
     vec3 mq = p - vec3(.6, .925, 3.25);
@@ -683,18 +694,36 @@ vec3 render(vec2 fc){
   vec3 rd = camRay(fc, ro, gTa, gFocal, .01 * sin(iTime * .5));
   float dither = hash21(fc + fract(iTime * 7.13) * 100.);
 
-  float d = 0.; vec2 h = vec2(0.); bool hit = false;
-  for (int i = 0; i < 90; i++){
-    vec3 p = ro + rd * d;
-    h = map(p);
-    if (h.x < .0015 * d) { hit = true; break; }
-    d += h.x * .92;
-    if (d > 14.) break;
+  // analytic room box
+  vec3 bmin = vec3(-2.4, 0., -3.2), bmax = vec3(3.05, 3.3, 8.6);
+  vec3 tb = (mix(bmin, bmax, step(0., rd)) - ro) / rd;
+  float tRoom = min(min(tb.x, tb.y), tb.z);
+  vec3 nRoom; float mRoom;
+  if (tRoom == tb.y){ nRoom = vec3(0., -sign(rd.y), 0.); mRoom = rd.y < 0. ? MF_FLOOR : MF_CEIL; }
+  else if (tRoom == tb.x){ nRoom = vec3(-sign(rd.x), 0., 0.); mRoom = MF_WALL; }
+  else { nRoom = vec3(0., 0., -sign(rd.z)); mRoom = MF_WALL; }
+  // objects AABB
+  vec3 omin = vec3(-.05, 0., -1.3), omax = vec3(3.05, 3.3, 7.);
+  vec3 ta = (omin - ro) / rd, tc = (omax - ro) / rd;
+  vec3 tn = min(ta, tc), tf = max(ta, tc);
+  float tIn = max(max(tn.x, tn.y), max(tn.z, 0.)), tOut = min(min(tf.x, tf.y), tf.z);
+  float tEndM = min(tRoom, tOut);
+  float d = tIn; vec2 h = vec2(0.); bool hit = false;
+  if (tIn < tEndM){
+    for (int i = 0; i < 80; i++){
+      vec3 p = ro + rd * d;
+      h = map(p);
+      if (h.x < .0015 * d) { hit = true; break; }
+      d += h.x * .92;
+      if (d > tEndM) break;
+    }
   }
   vec3 col = vec3(0.);
-  if (hit){
+  vec3 n;
+  if (!hit){ d = tRoom; h = vec2(0., mRoom); n = nRoom; }
+  else n = nrm(ro + rd * d);
+  {
     vec3 p = ro + rd * d;
-    vec3 n = nrm(p);
     col = shadeScene(h, p, n, rd);
     col *= mix(.3, 1., calcAO(p, n));
   }
@@ -734,6 +763,6 @@ vec3 render(vec2 fc){
   }
   col += beam * min(tmax, 6.) / 6. * .05;
 
-  return col;
+  col += burstFX(ro, rd, d);
   return col;
 }

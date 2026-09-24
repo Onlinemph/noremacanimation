@@ -1,64 +1,82 @@
+// s03_base (10 s) — reveal of Object 9 over the Sno-Cat's shoulder; slow push-in; the mast beacon
+// blinks every 1.6 s (first at 0.7 s); title card 6.5–9.5 s.
+
+function gust(t) {
+  const g = (c, w) => Math.exp(-(((t - c) / w) ** 2));
+  return Math.min(1, 0.12 + 0.6 * g(2.0, 1.2) + 0.7 * g(6.6, 1.4));
+}
+export const BLINK0 = 0.7, BLINK_P = 1.6;
+function beacon(t) {
+  if (t < BLINK0 - 0.05) return 0;
+  const ph = (t - BLINK0) % BLINK_P;
+  if (ph < 0.06) return ph / 0.06;          // strobe-ish attack
+  if (ph < 0.42) return 1;
+  if (ph < 0.75) return Math.pow(1 - (ph - 0.42) / 0.33, 2);  // incandescent decay
+  return 0;
+}
+
 export default {
   duration: 10,
   fps: 24,
-  sceneScale: 0.28,
+  sceneScale: 0.66,
+  params(t) { return [gust(t), beacon(t)]; },
   post(t) {
-    const gust = Math.exp(-(((t - 2.0) / 1.4) ** 2)) + Math.exp(-(((t - 6.5) / 1.6) ** 2));
+    const gu = gust(t);
     return {
       bar: 0.12,
-      grain: 0.07,
-      aberr: 0.0016,
-      vignette: 1.05,
-      bloom: 0.4,
-      exposure: 1.0,
-      contrast: 1.1,
-      sat: 0.72,
-      temp: -0.15,
-      shake: 0.1 + Math.min(gust, 1) * 0.25,
+      grain: 0.05,
+      aberr: 0.0015,
+      vignette: 1.1,
+      bloom: 0.45,
+      exposure: 1.2,
+      contrast: 1.08,
+      sat: 0.92,
+      temp: -0.1,
+      shake: 0.03 + gu * 0.08,
       fade: t < 0.4 ? 1 - t / 0.4 : (t > 9.6 ? (t - 9.6) / 0.4 : 0),
     };
   },
   textures: [
     {
-      w: 1024, h: 704,
+      // portal face above the blast door: 9 m x 1.55 m of concrete, transparent where unpainted
+      w: 1024, h: 176,
       draw(ctx, w, h) {
         ctx.clearRect(0, 0, w, h);
-        // faded red star, upper-left
-        const cx = w * 0.16, cy = h * 0.28, R = h * 0.16;
+        let seed = 11;
+        const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+        // faded red star on the left
+        const cx = w * 0.2, cy = h * 0.5, R = h * 0.4;
         ctx.save();
-        ctx.globalAlpha = 0.4;
-        ctx.fillStyle = '#8a1a12';
+        ctx.fillStyle = 'rgba(150,26,18,0.85)';
         ctx.beginPath();
         for (let i = 0; i < 5; i++) {
-          const a0 = -Math.PI / 2 + i * (Math.PI * 2 / 5);
-          const a1 = a0 + Math.PI / 5;
-          const x0 = cx + Math.cos(a0) * R, y0 = cy + Math.sin(a0) * R;
-          const x1 = cx + Math.cos(a1) * R * 0.42, y1 = cy + Math.sin(a1) * R * 0.42;
-          if (i === 0) ctx.moveTo(x0, y0); else ctx.lineTo(x0, y0);
-          ctx.lineTo(x1, y1);
+          const a0 = -Math.PI / 2 + i * (Math.PI * 2 / 5), a1 = a0 + Math.PI / 5;
+          ctx.lineTo(cx + Math.cos(a0) * R, cy + Math.sin(a0) * R);
+          ctx.lineTo(cx + Math.cos(a1) * R * 0.4, cy + Math.sin(a1) * R * 0.4);
         }
-        ctx.closePath();
-        ctx.fill();
+        ctx.closePath(); ctx.fill();
         ctx.restore();
-        // stencilled Cyrillic "ОБЪЕКТ 9", worn paint
+        // stencilled ОБЪЕКТ 9
         ctx.save();
-        ctx.globalAlpha = 0.5;
-        ctx.fillStyle = '#c8c6bc';
-        ctx.font = `bold ${Math.round(h * 0.15)}px "Russo One"`;
+        ctx.fillStyle = 'rgba(214,208,190,0.92)';
+        ctx.font = `${Math.round(h * 0.62)}px "Russo One"`;
         ctx.textBaseline = 'middle';
         ctx.textAlign = 'left';
-        ctx.translate(w * 0.06, h * 0.62);
-        ctx.fillText('ОБЪЕКТ 9', 0, 0);
+        ctx.fillText('ОБЪЕКТ 9', w * 0.3, h * 0.53);
         ctx.restore();
-        // weathering: sparse dark speckle over the whole panel
+        // stencil bridges (thin vertical gaps) and weathering: paint flaked off
         ctx.save();
-        ctx.globalAlpha = 0.35;
-        let seed = 7;
-        const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
-        for (let i = 0; i < 400; i++) {
-          const x = rnd() * w, y = rnd() * h, r = rnd() * 2.5 + 0.5;
-          ctx.fillStyle = rnd() > 0.5 ? '#000000' : '#3a3a38';
+        ctx.globalCompositeOperation = 'destination-out';
+        for (let i = 0; i < 700; i++) {
+          const x = rnd() * w, y = rnd() * h, r = rnd() * rnd() * 7 + 0.6;
+          ctx.globalAlpha = 0.5 + 0.5 * rnd();
           ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
+        }
+        // drip-streak erosion
+        for (let i = 0; i < 40; i++) {
+          const x = rnd() * w, y0 = rnd() * h * 0.5, l = rnd() * h;
+          ctx.globalAlpha = 0.35;
+          ctx.fillRect(x, y0, 1 + rnd() * 3, l);
         }
         ctx.restore();
       },
@@ -66,7 +84,7 @@ export default {
   ],
   overlay(ctx, t, W, H) {
     const s = W / 1280;
-    const a0 = 6.3, a1 = 6.9, a2 = 8.9, a3 = 9.5;
+    const a0 = 6.5, a1 = 7.1, a2 = 8.9, a3 = 9.5;
     let alpha = 0;
     if (t >= a0 && t < a1) alpha = (t - a0) / (a1 - a0);
     else if (t >= a1 && t < a2) alpha = 1;

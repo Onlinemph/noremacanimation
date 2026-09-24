@@ -1,390 +1,445 @@
-// ============================================================================
-// s07_fight — "The staff charge." First-person KS-23 corridor firefight.
-// Camera = Hollis. Gun = sdKS23 held lower-right, attached to camera frame.
-//
-// Timeline (seconds, kept in exact sync with shot.js params()/post() and cues.json):
-//   0.0        power dead, red beacon sweeps, silence
-//   1.2 / 1.6  monster A / B visible far end, idle twitch in flashlight sweep
-//   3.3        growl
-//   4.0        shriek, A & B start sprinting (charge)
-//   5.00       KS23 SHOT 1  -> kills A                 pump 5.08-5.43
-//   5.6        A body_fall
-//   8.4        AK burst     -> kills B                 body_fall 8.85
-//   8.0-15.5   horde C..H,J enter from side doors / far end, sprinting
-//   9.3        PPSH burst   -> kills C                 body_fall 9.7
-//   10.6       KS23 SHOT 2  -> kills D                 pump 10.68-11.03, body_fall 11.0
-//   11.6       AK burst     -> kills E                 body_fall 12.05
-//   13.0       PPSH burst   -> kills F                 body_fall 13.45
-//   14.2       KS23 SHOT 3  -> kills G, blood hits lens  pump 14.28-14.63, body_fall 14.6
-//   15.3       AK burst     -> kills H                 body_fall 15.75
-//   16.4       PPSH burst   -> grazes J (stagger)
-//   17.0       KS23 SHOT 4, POINT BLANK -> kills J      pump 17.08-17.43, body_fall 17.3
-//   18.3       flare_shot (Okafor), arcs 18.3->19.6
-//   19.6       flare lands far end, floods red, smoke
-//   20.4-23.4  drone_swell / stinger(20.6), reveal of crowd, beat, they turn 22.5-23.2
-//   22.8-23.6  fade to black
-// ============================================================================
+// s07_fight — first person with the KS-23. Red beacons, torch under the barrel, muzzle flashes.
+// uP: 0 KS flash, 1 pump, 2 recoil, 3 left-gun flash, 4 time since last left-gun round (-1 none),
+//     6 flare on, 7 flare arc progress, 8 lens blood, 9 crowd turn, 10 crowd run, 11-13 aim point, 14 t
 
-// ---------------------------------------------------------------- geometry --
-float corrHalfW(float z){ return 1.9 + smoothstep(8.0, 12.0, z) * 1.7; }
-const float CORR_H = 2.65;
-const float FAR_Z = 19.0;
+#define MF_WALL 70.
+#define MF_FLOOR 71.
+#define MF_CEIL 72.
+#define MF_TABLE 73.
+#define MF_BEACON 74.
+#define MF_PIPE 75.
+#define MF_DOOR 76.
+
+vec3 gRo, gGunO, gGunR, gGunU, gGunF, gMuzzle, gFlare;
+
+// ---------------------------------------------------------------- MONSTER SCRIPT (keep in sync with shot.js)
+// i: seed, start (x,z), end (x,z), tRun, tHit, killedBy (0 KS, 1 gun), appear (from a side door) time
+const int NM = 7;
+float mSeed(int i){ return i==0?.22: i==1?.71: i==2?.41: i==3?.83: i==4?.12: i==5?.64: .37; }
+vec2 mStart(int i){ return i==0?vec2(.3,16.): i==1?vec2(-.8,22.): i==2?vec2(2.8,10.): i==3?vec2(0.,24.): i==4?vec2(-2.8,12.): i==5?vec2(.6,26.): vec2(-.4,20.); }
+vec2 mEnd(int i){ return i==0?vec2(.3,8.6): i==1?vec2(-.5,8.8): i==2?vec2(.45,5.6): i==3?vec2(.05,6.6): i==4?vec2(-.5,7.5): i==5?vec2(.2,9.): vec2(-.3,1.75); }
+float mRun(int i){ return i==0?4.: i==1?4.5: i==2?8.: i==3?8.5: i==4?9.5: i==5?10.: 12.5; }
+float mHit(int i){ return i==0?5.: i==1?6.9: i==2?9.6: i==3?12.: i==4?11.: i==5?13.4: 15.6; }
+float mKS(int i){ return (i==0||i==2||i==3||i==6) ? 1. : 0.; }
+
+// returns world position (feet), plus yaw, run, fall (signed: + forward, - backward), lift
+void monsterState(int i, float t, out vec3 pos, out float yaw, out float run, out float fall){
+  vec2 a = mStart(i), b = mEnd(i);
+  float tr = mRun(i), th = mHit(i);
+  vec2 xz;
+  run = 0.;
+  if (t < tr){
+    xz = a;
+    if (i == 0) xz.y -= .6 * t;                                         // the first one walks into the light
+  } else if (t < th){
+    vec2 a2 = a; if (i == 0) a2.y -= .6 * tr;
+    float k = (t - tr) / (th - tr);
+    xz = mix(a2, b, k);
+    run = smoothstep(0., .25, t - tr);
+  } else {
+    xz = b;
+    run = 1.;
+  }
+  fall = 0.;
+  if (t >= th){
+    float d = t - th;
+    if (mKS(i) > .5){
+      float push = (i == 6 ? 3.6 : 2.4) * (1. - exp(-d * 9.));
+      xz.y += push;                                                     // blown back down the corridor
+      fall = -1.55 * smoothstep(0., .45, d);
+    } else {
+      fall = 1.5 * smoothstep(.25, .7, d);                              // crumples forward after the burst
+      xz.x += .1 * sin(d * 40.) * (1. - smoothstep(0., .3, d));
+    }
+    run = mix(1., 0., smoothstep(0., .2, d));
+  }
+  pos = vec3(xz.x, 0., xz.y);
+  vec2 dcam = normalize(gRo.xz - pos.xz);
+  yaw = atan(-dcam.x, dcam.y);
+}
+
+vec2 monsterSDF(vec3 p, int i, float t){
+  vec3 pos; float yaw, run, fall;
+  monsterState(i, t, pos, yaw, run, fall);
+  vec3 mp = p - pos;
+  if (length(mp.xz) > 2.6) return vec2(length(mp.xz) - 2.4, 0.);
+  mp.xz *= rot2(yaw);
+  if (fall != 0.){
+    mp.y -= .1 * abs(fall) / 1.55;
+    mp = rotX(mp, fall);
+  }
+  float b = sdCapsule(mp, vec3(0., .2, 0.), vec3(0., 2., 0.), 1.);
+  if (b > .2) return vec2(b, 0.);
+  return sdMonster(mp, t + float(i) * 3.1, mSeed(i), run);
+}
+
+// cheap crowd silhouettes for the flare reveal, rows at the far end
+vec2 crowd(vec3 p){
+  if (uP[6] <= 0.) return vec2(1e3, 0.);
+  if (p.z < 13.9) return vec2(14. - p.z, 0.);
+  float r = clamp(floor((p.z - 14.6) / 1.8 + .5), 0., 3.);
+  float zc = 14.6 + r * 1.8;
+  float off = mod(r, 2.) * .47;
+  float ci = clamp(floor((p.x - off) / .95 + .5), -2., 2.);
+  vec2 id = vec2(ci, r);
+  vec2 jit = (hash22(id * 7.3) - .5) * vec2(.3, .5);
+  vec3 q = p - vec3(ci * .95 + off + jit.x, 0., zc + jit.y);
+  float turn = uP[9], run = uP[10];
+  float yaw = mix(.2 * (hash21(id) - .5), PI + .3 * (hash21(id + 4.) - .5), turn);
+  q.xz *= rot2(yaw);
+  float tw = uP[14] * (3. + 4. * hash21(id + 1.));
+  float twitch = pow(noise2(vec2(tw, id.x * 3. + id.y)), 5.) * 2.;
+  float lean = .35 + .4 * run + .1 * hash21(id + 2.);
+  vec3 hip = vec3(0., .95 - .08 * run, 0.);
+  vec3 sh = hip + vec3(0., .5 * cos(lean), .5 * sin(lean));
+  vec3 hd = sh + vec3(.12 * (hash21(id + 3.) - .5) + .08 * twitch, .17, .1);
+  float d = sdTaper(q, hip, sh, .12, .17);
+  d = smin(d, sdSphere(q - hd, .1), .04);
+  for (int s = 0; s < 2; s++){
+    float sg = s == 0 ? -1. : 1.;
+    vec3 a = sh + vec3(.2 * sg, 0., 0.);
+    vec3 hnd = a + vec3(.05 * sg, -.75 + .4 * run, .2 + .4 * run);
+    d = min(d, sdTaper(q, a, hnd, .05, .03));
+    d = min(d, sdTaper(q, hip + vec3(.1 * sg, 0., 0.), vec3(.14 * sg, .05, .15 * sin(uP[14] * 7. * run + sg)), .08, .05));
+  }
+  return vec2(d, M_CLOTH + .5);
+}
+
+vec2 sdKS23Detail(vec3 p, float pump){
+  vec2 r = vec2(1e5, M_GUNMETAL);
+  float barrel = sdCylZ(p - vec3(0., .02, .37), .019, .26);
+  barrel = max(barrel, -sdCylZ(p - vec3(0., .02, .6), .0115, .1));
+  r = opU(r, vec2(barrel, M_GUNMETAL));
+  r = opU(r, vec2(sdBox(p - vec3(0., .045, .6), vec3(.003, .01, .006)), M_GUNMETAL));   // front sight
+  r = opU(r, vec2(sdCylZ(p - vec3(0., .005, .6), .026, .012), M_GUNMETAL));             // muzzle band
+  r = opU(r, vec2(sdCylZ(p - vec3(0., -.024, .3), .016, .2), M_GUNMETAL));              // mag tube
+  float fz = .26 - .09 * pump;
+  float fe = sdRoundBox(p - vec3(0., -.02, fz), vec3(.028, .024, .085), .014);
+  fe += .0015 * sin(p.z * 180.) * step(abs(p.y + .02), .02);                            // pump ribs
+  r = opU(r, vec2(fe, M_WOOD));
+  // tapered receiver: narrower front block blended into a taller rear block
+  float rcFront = sdRoundBox(p - vec3(0., .0, .075), vec3(.0215, .033, .045), .006);
+  float rcRear  = sdRoundBox(p - vec3(0., .010, -.03), vec3(.0255, .050, .105), .007);
+  float rc = smin(rcFront, rcRear, .025);
+  rc = smax(rc, -sdBox(p - vec3(.023, .022, .05), vec3(.009, .020, .052)), .004);       // ejection port
+  rc = smax(rc, -sdBox(p - vec3(.021, .014, -.02), vec3(.004, .005, .09)), .0025);      // bolt rail R
+  rc = smax(rc, -sdBox(p - vec3(-.021, .014, -.02), vec3(.004, .005, .09)), .0025);     // bolt rail L
+  r = opU(r, vec2(rc, M_GUNMETAL));
+  r = opU(r, vec2(sdBox(p - vec3(0., .062, -.115), vec3(.0045, .007, .012)), M_GUNMETAL)); // rear sight
+  r = opU(r, vec2(max(sdTorus((p - vec3(0., -.058, -.03)).xzy, vec2(.028, .0045)), -(p.y + .045)), M_GUNMETAL));
+  r = opU(r, vec2(sdCapsule(p, vec3(0., -.04, -.025), vec3(0., -.068, -.035), .003), M_GUNMETAL));
+  // wooden stock: side profile (z back, y up) as a convex polygon, extruded and rounded.
+  // wrist leaves the receiver's rear face, comb drops gently, deep butt with rubber pad.
+  vec2 q = vec2(p.z, p.y);
+  float prof = -1e5;
+  const int NP = 6;
+  vec2 P[6] = vec2[6](vec2(-.125, .052), vec2(-.555, .012), vec2(-.565, -.148), vec2(-.30, -.082), vec2(-.17, -.062), vec2(-.125, -.035));
+  for (int i = 0; i < NP; i++){
+    vec2 e = P[(i + 1) % NP] - P[i];
+    vec2 nn = normalize(vec2(e.y, -e.x));
+    prof = max(prof, dot(q - P[i], nn));
+  }
+  float halfW = .017 + .006 * smoothstep(-.2, -.5, p.z);          // stock thickens toward the butt
+  float stock = length(max(vec2(prof + .008, abs(p.x) - halfW + .008), 0.)) + min(max(prof + .008, abs(p.x) - halfW + .008), 0.) - .008;
+  // semi-pistol grip swell under the wrist
+  float grip = sdRoundBox(rotX(p - vec3(0., -.075, -.17), -.45), vec3(.017, .045, .022), .012);
+  r = opU(r, vec2(smin(stock, grip, .02), M_WOOD));
+  // rubber buttpad
+  float pad = max(abs(p.z + .567) - .008, abs(p.x) - halfW);
+  pad = max(pad, dot(vec2(p.z, p.y) - vec2(-.56, .0), vec2(0., 1.)) - .012);
+  pad = max(pad, -(p.y + .15));
+  r = opU(r, vec2(pad, M_GUNMETAL));
+  return r;
+}
+
+
+
+vec2 gunSDF(vec3 p){
+  vec3 q = p - gGunO;
+  if (dot(q, q) > .8) return vec2(length(q) - .85, 0.);
+  vec3 l = vec3(dot(q, gGunR), dot(q, gGunU), dot(q, gGunF));
+  // flashlight clamped under the barrel
+  vec2 r = sdKS23Detail(l, uP[1]);
+  r = opU(r, vec2(sdCylZ(l - vec3(0., -.06, .44), .022, .07), M_GUNMETAL));
+  r = opU(r, vec2(sdBox(l - vec3(0., -.045, .44), vec3(.008, .012, .03)), M_GUNMETAL));
+  return r;
+}
 
 vec2 room(vec3 p){
-  float hw = corrHalfW(p.z);
-  vec2 r = vec2(p.y, M_STEEL);                          // floor
-  r = opU(r, vec2(CORR_H - p.y, M_STEEL));               // ceiling
-  r = opU(r, vec2(hw - abs(p.x), M_STEEL));              // side walls
-  r = opU(r, vec2(FAR_Z - p.z, M_CONCRETE));             // far wall
-  // door recesses (visual alcoves, side doors the horde bursts from)
-  float rec1 = sdBox(p - vec3(sign(p.x) * (hw - .08), 1.15, 6.3), vec3(.1, 1.05, 1.0));
-  float rec2 = sdBox(p - vec3(sign(p.x) * (hw - .08), 1.15, 8.4), vec3(.1, 1.05, .9));
-  r = opU(r, vec2(min(rec1, rec2), M_CONCRETE));
-  // ceiling pipe/beams for industrial detail
-  for (int i = 0; i < 4; i++){
-    float bz = 2.0 + float(i) * 3.6;
-    r = opU(r, vec2(sdCylX(p - vec3(0., CORR_H - .12, bz), .05, hw - .1), M_GUNMETAL));
-  }
+  vec2 r = vec2(p.y, MF_FLOOR);
+  r = opU(r, vec2(3.1 - p.y, MF_CEIL));
+  float wall = 2.1 - abs(p.x);
+  // side doorways (dark voids) at z 10 (right, +x) and z 12 (left, -x)
+  float door = min(sdBox(p - vec3(2.4, 1.1, 10.), vec3(.6, 1.1, .6)), sdBox(p - vec3(-2.4, 1.1, 12.), vec3(.6, 1.1, .6)));
+  wall = max(wall, -door);
+  r = opU(r, vec2(wall, MF_WALL));
+  // back room behind the doorways (so rays find something)
+  r = opU(r, vec2(max(abs(p.x) - 4., -(abs(p.x) - 2.2)) , MF_WALL));
+  // far wall with double doors
+  r = opU(r, vec2(31. - p.z, MF_DOOR));
+  // pilasters
+  float pz = mod(p.z, 4.) - 2.;
+  r = opU(r, vec2(sdBox(vec3(abs(p.x) - 2.1, p.y - 1.5, pz), vec3(.12, 1.6, .18)), MF_WALL));
+  // pipes on the ceiling
+  r = opU(r, vec2(length(vec2(p.x - 1.4, p.y - 2.9)) - .09, MF_PIPE));
+  r = opU(r, vec2(length(vec2(p.x - 1.15, p.y - 2.95)) - .06, MF_PIPE));
+  r = opU(r, vec2(sdBox(vec3(p.x + 1.3, p.y - 2.95, 0.), vec3(.25, .03, 1e3)), MF_PIPE));
+  // red beacons
+  r = opU(r, vec2(sdCylY(p - vec3(0., 3.0, 7.), .09, .1), MF_BEACON));
+  r = opU(r, vec2(sdCylY(p - vec3(0., 3.0, 17.), .09, .1), MF_BEACON));
+  // overturned canteen tables
+  vec3 tq = p - vec3(-1.25, .4, 5.2); tq.xz *= rot2(.25);
+  r = opU(r, vec2(sdBox(tq, vec3(.8, .4, .03)), MF_TABLE));
+  vec3 tq2 = p - vec3(1.35, .38, 14.); tq2.xz *= rot2(-.4); tq2.xy *= rot2(.1);
+  r = opU(r, vec2(sdBox(tq2, vec3(.8, .38, .03)), MF_TABLE));
+  // its legs sticking out toward the camera
+  vec3 tl = p - vec3(-1.25, 0., 5.2); tl.xz *= rot2(.25);
+  r = opU(r, vec2(sdCapsule(vec3(abs(tl.x) - .7, abs(tl.y - .4) - .3, tl.z), vec3(0.), vec3(0., 0., -.7), .025), MF_TABLE));
   return r;
 }
 
-vec2 tables(vec3 p){
-  vec2 r = vec2(1e5, 0.);
-  vec3 t1 = p - vec3(-1.0, .35, 2.2); t1.xz *= rot2(.6); t1.yz *= rot2(1.15);
-  r = opU(r, vec2(sdRoundBox(t1, vec3(.7, .04, .45), .02), M_STEEL));
-  vec3 t1l = p - vec3(-1.0, .0, 2.2);
-  r = opU(r, vec2(sdCylY(t1l - vec3(.5, .3, .1), .03, .3), M_GUNMETAL));
-  vec3 t2 = p - vec3(1.1, .22, 3.4); t2.xz *= rot2(-.3); t2.yz *= rot2(-.35);
-  r = opU(r, vec2(sdRoundBox(t2, vec3(.65, .04, .42), .02), M_STEEL));
-  vec3 t3 = p - vec3(-.5, .06, 4.6); t3.xz *= rot2(.15);
-  r = opU(r, vec2(sdRoundBox(t3, vec3(.6, .05, .4), .03), M_STEEL));
-  return r;
-}
-
-// ------------------------------------------------------------ fight cast ----
-float fVisT(int i){ float a[9] = float[9](1.2, 1.6, 7.7, 8.0, 8.3, 9.3, 9.6, 10.2, 15.2); return a[i]; }
-float fChargeT(int i){ float a[9] = float[9](4.0, 4.0, 8.0, 8.3, 8.6, 9.6, 9.9, 10.6, 15.5); return a[i]; }
-float fKillT(int i){ float a[9] = float[9](5.0, 8.4, 9.3, 10.6, 11.6, 13.0, 14.2, 15.3, 17.0); return a[i]; }
-float fSeed(int i){ float a[9] = float[9](.18, .42, .55, .71, .29, .83, .63, .37, .90); return a[i]; }
-vec2 fSpawnXZ(int i){
-  vec2 a[9] = vec2[9](
-    vec2(-.5, 9.2), vec2(.6, 9.6),
-    vec2(-2.4, 6.4), vec2(2.4, 6.6),
-    vec2(-2.2, 7.6), vec2(2.3, 7.2),
-    vec2(-.3, 11.5), vec2(2.1, 6.2),
-    vec2(.3, 5.3)
-  );
-  return a[i];
-}
-// Each monster is shot while still several meters out; only the last (index 8,
-// the point-blank kill) is allowed to close to near-camera range. Targets must
-// stay well clear of the camera origin (z ~ -0.35) or the raymarch starts
-// inside solid geometry and the whole frame goes black.
-vec2 fTargetXZ(int i){
-  vec2 a[9] = vec2[9](
-    vec2(-.15, 2.6), vec2(.25, 3.4),
-    vec2(-.5, 3.0), vec2(.5, 3.6),
-    vec2(-.4, 2.8), vec2(.45, 3.2),
-    vec2(-.2, 2.4), vec2(.35, 3.0),
-    vec2(.15, 1.75)
-  );
-  return a[i];
-}
-
-vec2 fightPosXZ(int i, float t){
-  float t0 = fChargeT(i), t1 = fKillT(i);
-  vec2 sp = fSpawnXZ(i), tp = fTargetXZ(i);
-  float f = clamp((t - t0) / max(t1 - t0, .001), 0., 1.);
-  f = f * f * (3. - 2. * f);
-  vec2 pos = mix(sp, tp, f);
-  if (t > t1){
-    vec2 back = normalize(sp - tp);
-    pos += back * min((t - t1) * 5.0, 1.3);
-  }
-  return pos;
-}
-
-vec3 fightClothAlbedo(float m, float seed, vec3 p){
-  vec3 base = monsterAlbedo(m, p);
-  if (m == M_CLOTH && seed > .5) base = mix(base, vec3(.22, .19, .10), .6); // telogreika
-  return base;
-}
-
-vec2 evalFightMonster(int i, vec3 p, float t){
-  float vt = fVisT(i);
-  if (t < vt) return vec2(1e4, 0.);
-  vec2 pxz = fightPosXZ(i, t);
-  vec3 wp = vec3(pxz.x, 0., pxz.y);
-  float t0 = fChargeT(i), t1 = fKillT(i);
-  float seed = fSeed(i);
-  vec3 lp = p - wp;
-  float wobble = .15 * sin(seed * 40. + t * .7);
-  lp.xz *= rot2(PI + wobble);
-  bool fallen = t > t1;
-  float fallAge = t - t1;
-  if (fallen){
-    float fp = clamp((fallAge - .05) / .5, 0., 1.); fp = fp * fp * (3. - 2. * fp);
-    lp.yz *= rot2(fp * 1.7);
-  }
-  if (fallen && fallAge > 2.0){
-    vec2 r = vec2(sdCapsule(lp, vec3(0, .15, .1), vec3(0, .32, 1.05), .27) - .015,
-                  fract(seed * 7.) > .5 ? M_CLOTH : M_SKIN);
-    return r;
-  }
-  float bound = sdCapsule(lp, vec3(0, .2, 0), vec3(0, 2.1, 0), 1.0);
-  if (bound > .2) return vec2(bound, 0.);
-  float run = t < t0 ? 0. : 1.;
-  // tiny epsilon dodges a rare exact-value degenerate case in the shared
-  // sdMonster noise chain that can otherwise blank the whole frame
-  float animT = min(t, t1) + 0.0173;
-  return sdMonster(lp, animT, seed, run);
-}
-
-// blood spray: a handful of SDF droplets flung from the hit point at the instant
-// of each kill, arcing under gravity and shrinking — reads clearly against the
-// muzzle-flash / lit background for one glance legibility.
-vec2 evalBloodSpray(vec3 p, float t){
-  vec2 r = vec2(1e5, M_GORE);
-  for (int i = 0; i < 9; i++){
-    float kt = fKillT(i);
-    float dt = t - kt;
-    if (dt < 0.0 || dt > 0.4) continue;
-    vec2 hitxz = fightPosXZ(i, kt);
-    vec3 hp = vec3(hitxz.x, 1.1, hitxz.y);
-    float seed = fSeed(i);
-    for (int k = 0; k < 5; k++){
-      vec3 h3 = hash33(vec3(seed * 7.0 + float(k), float(i), 3.1));
-      vec3 dir = normalize(vec3(h3.x - .5, h3.y * .6 + .15, -(h3.z * .5 + .25)));
-      float spd = 2.2 + 2.6 * h3.x;
-      vec3 dp = hp + dir * spd * dt - vec3(0., 4.2 * dt * dt, 0.);
-      float rad = max(.004, .05 * (1.0 - dt / 0.4));
-      r = opU(r, vec2(sdSphere(p - dp, rad), M_GORE));
-    }
-  }
-  return r;
-}
-
-// ------------------------------------------------------------- reveal crowd -
-vec2 cVec(int i){
-  vec2 a[10] = vec2[10](
-    vec2(-1.6, 14.0), vec2(1.2, 14.6), vec2(-.2, 15.2),
-    vec2(-2.6, 15.6), vec2(2.4, 15.2), vec2(-1.0, 16.4),
-    vec2(1.6, 16.8), vec2(0., 17.6), vec2(-2.8, 17.2), vec2(2.9, 16.2)
-  );
-  return a[i];
-}
-vec2 cheapHuman(vec3 p, float seed){
-  float body = sdCapsule(p, vec3(0, .17, 0), vec3(0, 1.5, 0), .17 + .015 * sin(seed * 30.));
-  vec3 hp = p - vec3(.02 * sin(iTime * 9. + seed * 20.), 1.72, 0.);
-  float head = sdSphere(hp, .105);
-  return vec2(min(body, head), fract(seed * 5.) > .5 ? M_CLOTH : M_SKIN);
-}
-vec2 evalCrowd(int i, vec3 p, float t){
-  vec2 base = cVec(i);
-  vec3 wp = vec3(base.x, 0., base.y);
-  vec3 lp = p - wp;
-  float seed = hash11(float(i) * 3.71 + 2.0);
-  float yaw = .7 * sin(seed * 12.) + PI * smoothstep(22.5, 23.3, t);
-  lp.xz *= rot2(yaw);
-  if (i < 3){
-    float bound = sdCapsule(lp, vec3(0, .2, 0), vec3(0, 2.1, 0), 1.0);
-    if (bound > .2) return vec2(bound, 0.);
-    return sdMonster(lp, t + 0.0173, seed, 0.0);
-  }
-  return cheapHuman(lp, seed);
-}
-
-// -------------------------------------------------------------------- gun ---
-vec3 gRight, gUp, gFwd, gGunPos;
-vec2 evalGun(vec3 p){
-  vec3 pg = p - gGunPos;
-  vec3 pl = vec3(dot(pg, gRight), dot(pg, gUp), dot(pg, gFwd));
-  float pump = uP[1];
-  pl.yz *= rot2(-.55 - .12 * pump);          // held low, tilted up-right into frame
-  pl.xy *= rot2(.10);
-  vec2 g = sdKS23(pl * 1.15, pump);
-  g.x /= 1.15;
-  return g;
-}
-
-// --------------------------------------------------------------------- map --
 vec2 map(vec3 p){
   vec2 r = room(p);
-  r = opU(r, tables(p));
-  for (int i = 0; i < 9; i++) r = opU(r, evalFightMonster(i, p, iTime));
-  r = opU(r, evalBloodSpray(p, iTime));
-  if (iTime > 18.6) for (int i = 0; i < 10; i++) r = opU(r, evalCrowd(i, p, iTime));
-  r = opU(r, evalGun(p));
+  float t = uP[14];
+  for (int i = 0; i < NM; i++){
+    if (mSeed(i) < 0.) continue;
+    r = opU(r, monsterSDF(p, i, t));
+  }
+  r = opU(r, crowd(p));
+  r = opU(r, gunSDF(p));
   return r;
 }
-vec3 nrm(vec3 p){ vec2 e = vec2(.0015, 0); return normalize(vec3(
-  map(p + e.xyy).x - map(p - e.xyy).x,
-  map(p + e.yxy).x - map(p - e.yxy).x,
-  map(p + e.yyx).x - map(p - e.yyx).x)); }
 
-// ---------------------------------------------------------------- shading ---
-vec3 shade(vec3 p, vec3 n, vec3 rd, float m, float seed){
-  vec3 alb;
-  float spec;
-  if (m == 0.) { alb = vec3(.06, .065, .075) * (.7 + .5 * fbm3lo(p * 3.)); spec = .15; }         // gun-attached "misc" or default steel
-  else if (m <= 4.5) { alb = fightClothAlbedo(m, seed, p); spec = monsterSpec(m); }
-  else if (m <= 6.5) { alb = gunAlbedo(m, p); spec = .55; }
-  else if (m == M_CONCRETE){ alb = mix(vec3(.14,.14,.15), vec3(.03,.03,.035), smoothstep(.4,.8,fbm3lo(p*1.5))); spec=.05; }
-  else { // M_STEEL walls/floor/ceiling: grime, frost, old paint, blood
-    // fade high-frequency detail with distance to avoid aliasing/static on far surfaces
-    float distFade = clamp(1.0 - length(p - (gGunPos)) * .045, .35, 1.0);
-    float grime = fbm3lo(p * (0.9 * distFade + .15));
-    vec3 paint = mix(vec3(.10, .13, .11), vec3(.03, .035, .04), smoothstep(.3, .75, grime));
-    float frost = smoothstep(.55, .8, fbm3lo(p * (1.1 * distFade + .2) + vec3(0,0,9.)));
-    paint = mix(paint, vec3(.55, .62, .68) * .5, frost * step(p.y, .05));
-    float bl = 0.;
-    if (p.y < .06) bl = max(bl, bloodSplat(p.xz * .5 + 11., 4.1));
-    for (int i = 0; i < 9; i++){ if (fKillT(i) < iTime){ vec2 sp = fightPosXZ(i, min(iTime, fKillT(i) + 3.)); bl = max(bl, bloodSplat((p.xz - sp) * .8 + float(i)*3., float(i)+1.3)); } }
-    paint = mix(paint, goreColor(p) * .6, bl * step(p.y, .08));
-    alb = paint; spec = .08 + frost * .3;
-  }
-  vec3 lit = vec3(0.);
-  float ao = clamp(map(p + n * .18).x / .18, .1, 1.);
-  float rim = pow(1.0 - max(dot(n, -rd), 0.), 3.0);
-  bool isGun = (m > 4.5 && m < 6.5);
-
-  // rotating red emergency beacon: a tight sweeping cone, not a fill
-  vec3 bpos = vec3(0., CORR_H - .1, 1.2);
-  float bang = iTime * 1.9;
-  vec3 bdir = normalize(vec3(sin(bang), -.22, cos(bang)));
-  float bsweep = spotLight(p, bpos, bdir, .55, .93) * (.55 + .45 * abs(sin(bang * 2.)));
-  vec3 L1 = normalize(bpos - p);
-  lit += vec3(1., .05, .04) * bsweep * max(dot(n, L1), 0.) * 2.6;
-  if (isGun) lit += vec3(1., .05, .04) * bsweep * rim * 1.6;
-
-  // flashlight mounted under the gun, aimed with camera
-  vec3 fdir = gFwd;
-  vec3 L2 = normalize(gGunPos - p);
-  float fl = spotLight(p, gGunPos, fdir, .80, .975) * flashCookie(p, gGunPos, fdir);
-  lit += vec3(.85, .92, 1.0) * fl * max(dot(n, L2), 0.) * 6.5;
-  if (isGun) lit += vec3(.85, .92, 1.0) * .5 * rim;
-
-  // muzzle flash: brief, blinding, whites out whatever it hits
-  float mf = uP[2];
-  if (mf > .001){
-    vec3 mpos = gGunPos + gFwd * .62;
-    vec3 L3 = normalize(mpos - p);
-    float d3 = length(mpos - p);
-    lit += vec3(1., .82, .55) * mf * max(dot(n, L3), 0.) * 7. / (1. + d3 * d3 * .6);
-    if (isGun) lit += vec3(1., .8, .55) * mf * 1.0;
-    // small omnidirectional kicker so anything close (esp. point-blank) still
-    // catches light where the surface normal glances away from the muzzle
-    lit += vec3(1., .7, .5) * mf * .6 / (1. + d3 * d3 * 1.1);
-  }
-  float pb = uP[3];
-  if (pb > .01){
-    // point-blank kill: the blast lights flesh/cloth/gore hard, but stays short
-    // of a flat wash so the monster's shape and the blood spray still read
-    lit += vec3(1., .55, .4) * pb * .8;
-  }
-
-  // AK / PPSh strobing muzzle flashes from off-screen left
-  float ak = uP[4], pp = uP[5];
-  if (ak + pp > .001){
-    vec3 lpos = vec3(-3.6, 1.5, 1.0);
-    vec3 L4 = normalize(lpos - p);
-    lit += vec3(.9, .93, 1.0) * (ak + pp) * max(dot(n, L4), 0.) * 2.6;
-  }
-
-  // flare: airborne, then a small, intense, localized core on the ground far end.
-  // Falls off hard within ~6-8m so it does not wash the whole corridor pink; anything
-  // between the flare and camera (the crowd) stays a dark silhouette against the glow.
-  float fp = uP[6], fg = uP[7], rv = uP[8];
-  if (fp > .001 || rv > .001){
-    float arc = sin(fp * PI) * 2.2;
-    vec3 flarePos = mix(vec3(-1.1, 1.6, .2), vec3(.2, .25, 15.5), fp) + vec3(0., arc, 0.);
-    vec3 L5 = normalize(flarePos - p);
-    float d5 = length(flarePos - p);
-    // fg already carries the landing pulse envelope (see shot.js) — don't re-pulse it here
-    float falloff = 1. / (1. + d5 * d5 * .8);
-    lit += vec3(1., .10, .30) * (fp > .001 && fp < 1. ? 1.4 : fg) * max(dot(n, L5), 0.) * 11. * falloff;
-    if (isGun) lit += vec3(1., .12, .32) * fg * rim * 1.4 * falloff;
-  }
-
-  vec3 col = lit * ao;
-  // near-black ambient floor: keeps unlit surfaces reading as silhouette, not grey mush
-  col += alb * .006;
-  if (isGun) col += alb * .02; // just enough that the gun never vanishes to pure void
-  // specular from strongest nearby source (beacon/flashlight combined dir approx)
-  vec3 Ls = normalize(L2 + L1 * .3);
-  float sp = pow(max(dot(reflect(-Ls, n), -rd), 0.), 28.) * spec;
-  col += (fl * 3. + bsweep + mf * 2.) * sp;
-  col *= alb;
-  return col;
+vec3 calcNormal(vec3 p){
+  const vec2 k = vec2(1., -1.); const float e = .0012;
+  return normalize(k.xyy * map(p + k.xyy * e).x + k.yyx * map(p + k.yyx * e).x + k.yxy * map(p + k.yxy * e).x + k.xxx * map(p + k.xxx * e).x);
+}
+float calcAO(vec3 p, vec3 n){
+  float o = 0., s = 1.;
+  for (int i = 0; i < 2; i++){ float h = .05 + .15 * float(i); o += (h - map(p + n * h).x) * s; s *= .7; }
+  return clamp(1. - 2.2 * o, 0., 1.);
 }
 
-// -------------------------------------------------------------- volumetrics -
-vec3 volumetric(vec3 ro, vec3 rd, float tmax){
-  vec3 acc = vec3(0.);
-  float steps = 7.0;
-  float dith = hash21(gl_FragCoord.xy + iTime * 91.7);
-  vec3 bpos = vec3(0., CORR_H - .1, 1.2);
-  float bang = iTime * 1.9;
-  vec3 bdir = normalize(vec3(sin(bang), -.22, cos(bang)));
-  float fp = uP[6], fg = uP[7];
-  vec3 flarePos = mix(vec3(-1.1, 1.6, .2), vec3(.2, .25, 15.5), fp) + vec3(0., sin(fp*PI)*2.2, 0.);
-  for (int i = 0; i < 7; i++){
-    float ti = (float(i) + dith) / steps * min(tmax, 16.0);
-    vec3 p = ro + rd * ti;
-    float fog = exp(-ti * .07);
-    // beacon: a thin sweeping shaft, not ambient wash
-    float bl = spotLight(p, bpos, bdir, .55, .94) * (.55 + .45 * abs(sin(bang * 2.)));
-    acc += vec3(1., .05, .04) * bl * fog * .016;
-    // flashlight shaft under the gun
-    float fl = spotLight(p, gGunPos, gFwd, .90, .985);
-    acc += vec3(.8, .9, 1.0) * fl * fog * .020;
-    // flare: tight, only glows near its own position (landing point / arc)
-    if (fg > .001 || (fp > .001 && fp < 1.)){
-      float d5 = length(flarePos - p);
-      float k = fp > .001 && fp < 1. ? 1.0 : fg;
-      acc += vec3(1., .10, .28) * k * fog * .07 / (1. + d5 * d5 * .7);
+// blood pools under the dead
+float bloodPools(vec3 p, float t){
+  float m = 0.;
+  for (int i = 0; i < NM; i++){
+    float th = mHit(i);
+    if (t < th + .3) continue;
+    vec3 pos; float yaw, run, fall;
+    monsterState(i, t, pos, yaw, run, fall);
+    vec2 c = pos.xz + vec2(0., mKS(i) > .5 ? .8 : -.8);
+    float r = .5 + .9 * smoothstep(0., 6., t - th);
+    m = max(m, smoothstep(r, r * .6, length((p.xz - c) * vec2(1., .7)) + (fbm2(p.xz * 5.) - .5) * .4));
+  }
+  return m;
+}
+
+vec3 albedo(float m, vec3 p, out float rough){
+  rough = .75;
+  float t = uP[14];
+  if (m == MF_WALL){
+    float n = fbm3lo(p * 2.);
+    vec3 cream = mix(vec3(.3, .28, .23), vec3(.2, .19, .16), n);
+    vec3 green = mix(vec3(.07, .1, .085), vec3(.05, .07, .06), n);
+    vec3 c = mix(green, cream, smoothstep(1.28, 1.3, p.y));
+    c *= mix(.5, 1., smoothstep(0., .6, p.y));
+    float fr = smoothstep(.55, .75, fbm3lo(p * 2.7)) * (1. - smoothstep(.2, 1.3, p.y));
+    c = mix(c, vec3(.5, .56, .63), fr * .7);
+    // spatter where the fighting happened
+    if (abs(p.z - 8.) < 1.6) c = mix(c, vec3(.12, .01, .01), bloodSplat(vec2(p.z - 8., p.y - 1.2), 5.1 + sign(p.x)) * .85);
+    if (abs(p.z - 13.5) < 1.6 && p.x < 0.) c = mix(c, vec3(.12, .01, .01), bloodSplat(vec2(p.z - 13.5, p.y - 1.), 2.3) * .8);
+    return c;
+  }
+  if (m == MF_FLOOR){
+    vec3 c = vec3(.06, .058, .055) * (.6 + .6 * fbm2(p.xz * 1.5));
+    float fr = smoothstep(.55, .75, fbm2(p.xz * .9 + 3.));
+    c = mix(c, vec3(.45, .5, .55), fr * .5);
+    rough = mix(.6, .25, fr);
+    float bp = bloodPools(p, t);
+    c = mix(c, vec3(.09, .006, .006), bp);
+    rough = mix(rough, .06, bp);
+    return c;
+  }
+  if (m == MF_CEIL) return vec3(.04);
+  if (m == MF_TABLE){ rough = .5; return vec3(.18, .12, .07) * (.6 + .5 * fbm3lo(p * 5.)); }
+  if (m == MF_PIPE){ rough = .5; return vec3(.08); }
+  if (m == MF_DOOR){ rough = .6; return vec3(.06, .08, .07) * (.7 + .5 * fbm3lo(p * 3.)); }
+  if (m == MF_BEACON){ rough = .3; return vec3(.3, .02, .02); }
+  if (m == M_WOOD){ rough = .35; return mix(vec3(.07, .032, .014), vec3(.2, .1, .042), fbm3lo(p * vec3(30., 30., 6.))); }
+  if (m == M_GUNMETAL){ rough = .2; return vec3(.03, .033, .04); }
+  if (m <= 4.){ rough = m == M_GORE ? .1 : .55; return monsterAlbedo(m, p); }
+  return vec3(.2);
+}
+
+// ---------------------------------------------------------------- lights
+struct Lit { vec3 d; vec3 s; };
+void addLight(inout Lit L, vec3 p, vec3 n, vec3 v, float rough, vec3 lp, vec3 col){
+  vec3 l = lp - p; float d2 = dot(l, l); l *= inversesqrt(d2);
+  float ndl = max(dot(n, l), 0.);
+  col /= (1. + d2);
+  L.d += col * ndl;
+  vec3 h = normalize(l + v);
+  L.s += col * ndl * pow(max(dot(n, h), 0.), mix(100., 10., rough)) * (1. - rough);
+}
+vec3 beaconDir(float z, float t){ float a = t * 4.8 + z * .3; return normalize(vec3(cos(a), -.45, sin(a))); }
+
+Lit lighting(vec3 p, vec3 n, vec3 v, float rough){
+  Lit L; L.d = vec3(0.); L.s = vec3(0.);
+  float t = uP[14];
+  // rotating red beacons
+  for (int i = 0; i < 2; i++){
+    vec3 bp = vec3(0., 2.9, i == 0 ? 7. : 17.);
+    vec3 dir = beaconDir(bp.z, t);
+    float cone = smoothstep(.72, .93, dot(normalize(p - bp), dir));
+    addLight(L, p, n, v, rough, bp, vec3(1., .06, .03) * (cone * 6. + .4));
+  }
+  // torch under the barrel
+  vec3 tp = gMuzzle - gGunF * .15 - gGunU * .06;
+  float sp = spotLight(p, tp, gGunF, .955, .99) * mix(1., flashCookie(p, tp, gGunF), .3);
+  addLight(L, p, n, v, rough, tp, vec3(1., .96, .88) * sp * 8. * (1. - .5 * uP[6]) * (1. + dot(p - tp, p - tp)));
+  // KS-23 muzzle flash
+  if (uP[0] > 0.) addLight(L, p, n, v, rough, gMuzzle + gGunF * .3, vec3(1., .7, .35) * uP[0] * 9.);
+  // side guns' muzzle flash (off screen left)
+  if (uP[3] > 0.) addLight(L, p, n, v, rough, vec3(1.7, 1.35, .6), vec3(1., .75, .4) * uP[3] * 14.);
+  // flare
+  if (uP[6] > 0.){
+    float fl = uP[6] * (.8 + .2 * noise2(vec2(t * 13., 1.)) + .1 * sin(t * 31.));
+    addLight(L, p, n, v, rough, gFlare + vec3(0., .15, 0.), vec3(1., .12, .35) * fl * 45.);
+  }
+  return L;
+}
+
+// blood spray particles for the hits
+vec4 bloodSpray(vec3 ro, vec3 rd, float maxD, float t){
+  vec4 acc = vec4(0.);
+  for (int i = 0; i < NM; i++){
+    float d = t - mHit(i);
+    if (d < 0. || d > 1.4) continue;
+    vec3 pos; float yaw, run, fall;
+    monsterState(i, mHit(i), pos, yaw, run, fall);
+    vec3 o = pos + vec3(0., 1.25, 0.);
+    float ks = mKS(i);
+    for (int k = 0; k < 18; k++){
+      vec3 hsh = hash33(vec3(float(i), float(k), 3.));
+      vec3 vel = normalize(vec3(hsh.x - .5, hsh.y * .8 - .1, .4 + hsh.z * (ks > .5 ? 1.2 : .5))) * (2. + 5. * hsh.x) * (ks > .5 ? 1. : .6);
+      if (i == 6 && k < 7) vel.z = -abs(vel.z) - 3.;                  // point blank: toward the camera
+      vec3 pp = o + vel * d + vec3(0., -4.9 * d * d, 0.);
+      if (pp.y < 0.) continue;
+      float tc = dot(pp - ro, rd);
+      if (tc < 0. || tc > maxD) continue;
+      float dist = length(ro + rd * tc - pp);
+      float rad = (.018 + .03 * hsh.z) * (1. + d);
+      float a = smoothstep(rad, rad * .5, dist) * (1. - smoothstep(1., 1.4, d));
+      acc = mix(acc, vec4(vec3(.07, .004, .004), 1.), a);
     }
   }
-  return acc * (min(tmax,16.0) / steps);
+  return acc;
 }
 
-// --------------------------------------------------------------- camera ----
 vec3 render(vec2 fc){
-  float t = iTime;
-  // handheld sway
-  vec3 swayPos = vec3(fbm3lo(vec3(t * .5, 0., 0.)) - .5, fbm3lo(vec3(0., t * .6, 3.)) - .5, 0.) * .05;
-  float bob = sin(t * 1.8) * .012;
-  vec3 ro = vec3(.06, 1.56 + bob, -.35) + swayPos;
-  float recoil = uP[0], pb = uP[3];
-  vec3 ta = ro + vec3(.02 * sin(t * .37), -.02 + recoil * .18 + pb * .08, 6.0);
-  float roll = .01 * sin(t * .8) + recoil * .02;
-  vec3 rd = camRay(fc, ro, ta, 1.65, roll);
+  float t = uP[14];
+  vec3 aimP = vec3(uP[11], uP[12], uP[13]);
+  float rec = uP[2];
+  gRo = vec3(.1 + .03 * sin(t * .9), 1.62 + .012 * sin(t * 5.3), 0.);
+  vec3 ta = aimP + vec3(.08 * (noise2(vec2(t * 1.3, 2.)) - .5), .06 * (noise2(vec2(t * 1.1, 5.)) - .5) + rec * .5, 0.);
+  vec3 rd = camRay(fc, gRo, ta, 1.3, .02 * sin(t * .7) - .04 * rec);
+  vec3 f = normalize(ta - gRo);
+  vec3 rgt = normalize(cross(f, vec3(0., 1., 0.)));
+  vec3 up = cross(rgt, f);
+  // gun in view: lower right, canted slightly, kicking on recoil, rolling with the pump
+  gGunF = normalize(f + up * (.03 + rec * .35) + rgt * .02);
+  gGunR = normalize(cross(gGunF, up));
+  gGunU = cross(gGunR, gGunF);
+  float cant = .12 + uP[1] * .15;
+  vec3 r2 = gGunR * cos(cant) + gGunU * sin(cant);
+  gGunU = gGunU * cos(cant) - gGunR * sin(cant); gGunR = r2;
+  gGunO = gRo + rgt * .16 - up * (.135 - rec * .03) + f * (.42 - rec * .09);
+  gMuzzle = gGunO + gGunF * .63 + gGunU * .02;
+  // flare arc
+  vec3 fa = vec3(1.6, 1.4, 1.), fb = vec3(-.3, .05, 16.6);
+  float fk = uP[7];
+  gFlare = mix(fa, fb, fk) + vec3(0., 3.2 * fk * (1. - fk), 0.);
 
-  vec3 f = normalize(ta - ro);
-  vec3 r = normalize(cross(f, vec3(sin(roll), cos(roll), 0.)));
-  vec3 u = cross(r, f);
-  gRight = r; gUp = u; gFwd = f;
-  gGunPos = ro + r * .30 - u * .24 + f * (.55 - recoil * .09);
-
-  float d = 0.; vec2 h = vec2(0.);
-  for (int i = 0; i < 130; i++){
-    vec3 p = ro + rd * d;
-    h = map(p);
-    if (h.x < .0009 || d > 24.) break;
-    // never step backward (can happen if a step starts deep inside geometry,
-    // e.g. a monster reaching very close to camera at a point-blank kill) —
-    // that stalls/reverses the march and can leave the whole frame unresolved.
-    d += max(h.x * .82, .015);
+  float d = 0.; vec2 h = vec2(0.); bool hit = false;
+  for (int i = 0; i < 120; i++){
+    h = map(gRo + rd * d);
+    if (h.x < .0008 * (1. + d)){ hit = true; break; }
+    d += h.x * .9;
+    if (d > 40.) break;
   }
-  vec3 col;
-  if (d > 24.){
-    col = vec3(0.02, 0.015, 0.02) * (1.0 + uP[8]*1.2);
-  } else {
-    vec3 p = ro + rd * d, n = nrm(p);
-    float seed = 0.;
-    // recover which fight monster we hit (for cloth tint) by nearest match; cheap approx via re-deriving seed from material continuity is skipped, use generic
-    col = shade(p, n, rd, h.y, hash21(floor(p.xz*4.)));
+  vec3 col = vec3(0.);
+  if (hit){
+    vec3 p = gRo + rd * d, n = calcNormal(p), v = -rd;
+    float rough; vec3 alb = albedo(h.y, p, rough);
+    Lit L = lighting(p, n, v, rough);
+    float ao = calcAO(p, n);
+    col = alb * (L.d + vec3(.006, .004, .004)) * mix(.35, 1., ao) + L.s * ao;
+    if (h.y <= 4.){ float fr = pow(1. - max(dot(n, v), 0.), 3.); col += fr * L.s * .6 + fr * L.d * .05; }
+    if (h.y == M_WOOD || h.y == M_GUNMETAL){
+      // the gun in hand catches red beacon spill and the torch's bounce off the floor
+      col += alb * (vec3(.12, .02, .015) * (.6 + .4 * sin(t * 4.8)) + vec3(.05, .045, .04) * max(-n.y, 0.) + vec3(.03) * max(n.y, 0.));
+      col += vec3(.25, .05, .03) * pow(1. - max(dot(n, v), 0.), 4.) * .5;
+    }
+    if (h.y == MF_BEACON) col += vec3(1., .05, .02) * (2. + 6. * pow(max(0., dot(beaconDir(p.z, t), -rd)), 4.));
   }
-  col += volumetric(ro, rd, d > 24. ? 16.0 : d);
+  // haze: beacons, torch, flare smoke, gun smoke, muzzle light
+  float dith = hash21(fc + fract(t * 3.) * 41.);
+  float maxD = min(hit ? d : 40., 30.);
+  vec3 fog = vec3(0.); float smokeA = 0.;
+  for (int i = 0; i < 9; i++){
+    float s = (float(i) + dith) / 9.; s = s * s * maxD;
+    vec3 q = gRo + rd * s;
+    float dens = .45 + .55 * noise3(q * .7 + vec3(0., t * .1, t * .2));
+    for (int b = 0; b < 2; b++){
+      vec3 bp = vec3(0., 2.9, b == 0 ? 7. : 17.);
+      vec3 L = q - bp; float dl = length(L);
+      fog += vec3(1., .06, .03) * smoothstep(.8, .95, dot(L / dl, beaconDir(bp.z, t))) * 3. / (1. + dl * dl * .15) * dens;
+    }
+    vec3 tp = gMuzzle - gGunF * .15;
+    fog += vec3(1., .96, .88) * spotLight(q, tp, gGunF, .955, .99) * 2.5 * dens * (1. - .75 * uP[6]);
+    if (uP[0] > 0.) fog += vec3(1., .7, .35) * uP[0] * 1.2 / (1. + dot(q - gMuzzle, q - gMuzzle) * 6.);
+    if (uP[6] > 0.){
+      vec3 fq = q - gFlare;
+      float sm = smoothstep(4.5, 0., length(fq * vec3(1., .8, .6))) * uP[6] * (.5 + .5 * fbm3lo(q * .8 + vec3(0., -t * .4, 0.)));
+      fog += vec3(1., .15, .38) * (sm * 4. + 3. / (1. + dot(fq, fq) * .6)) * uP[6];
+    }
+  }
+  col += fog * maxD / 9. * .02;
+  // flare core
+  if (uP[6] > 0.){
+    float tc = dot(gFlare - gRo, rd);
+    float dd = length(gRo + rd * tc - gFlare);
+    if (tc > 0. && (!hit || tc < d + .3)) col += vec3(1., .5, .7) * uP[6] * (smoothstep(.06, .0, dd) * 6. + .02 / (dd * dd + .01) * .05);
+  }
+  // tracers from the side guns
+  if (uP[4] >= 0.){
+    int tgt = t < 8. ? 1 : (t < 12. ? 4 : 5);
+    vec3 tpos; float yw, rn, fl;
+    monsterState(tgt, min(t, mHit(tgt)), tpos, yw, rn, fl);
+    vec3 a = vec3(1.9, 1.35, .8), b = tpos + vec3(.05 * sin(t * 50.), 1.2 + .2 * sin(t * 37.), 0.);
+    vec3 dir = normalize(b - a);
+    float tr = uP[4] * 320.;
+    vec3 s0 = a + dir * max(tr - 5., 0.), s1 = a + dir * min(tr, length(b - a));
+    // closest distance between the view ray and the tracer segment
+    vec3 u = s1 - s0, w0 = gRo - s0;
+    float aa = dot(rd, rd), bb = dot(rd, u), cc = dot(u, u), dd2 = dot(rd, w0), ee = dot(u, w0);
+    float den = max(aa * cc - bb * bb, 1e-5);
+    float sc = clamp((bb * ee - cc * dd2) / den, 0., 100.), tc2 = clamp((aa * ee - bb * dd2) / den, 0., 1.);
+    float dist = length(gRo + rd * sc - (s0 + u * tc2));
+    if (!hit || sc < d) col += vec3(1., .75, .4) * smoothstep(.02, .0, dist) * 5. * step(tr, length(b - a) + 5.);
+  }
+  // KS-23 muzzle flash sprite
+  if (uP[0] > 0.){
+    float tc = dot(gMuzzle - gRo, rd);
+    vec3 cp = gRo + rd * tc - gMuzzle;
+    float along = dot(cp, gGunF), across = length(cp - gGunF * along);
+    float star = smoothstep(.05 + .08 * uP[0], 0., across + abs(along - .14) * .3) + smoothstep(.012, 0., across) * smoothstep(.4, 0., abs(along - .2));
+    col += vec3(1.5, .9, .45) * star * uP[0] * 5.;
+  }
+  // blood spray
+  vec4 bs = bloodSpray(gRo, rd, hit ? d : 40., t);
+  vec3 bl = bs.rgb * (.4 + 3. * uP[0]) + vec3(.2, .01, .01) * .15;
+  col = mix(col, bl + col * .15, bs.a);
   return col;
 }

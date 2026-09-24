@@ -8,23 +8,40 @@
 //
 // uP[0] = gust (0..1), from shot.js so the post shake matches.
 
+// ============================================================ sky ===
+const vec3 SKYAMB = vec3(.010, .014, .024);
+vec3 skyCol(vec3 rd, float t, float gust){
+  float y = max(rd.y, 0.);
+  vec3 c = mix(vec3(.004, .005, .009), vec3(.001, .0015, .003), smoothstep(0., .4, y));
+  // spindrift veil drifting across the sky
+  vec2 sp = rd.xz / (y + .08);
+  float veil = fbm2(vec2(sp.x * .5 + t * .9, sp.y * .5 + t * .15) + 3.);
+  float clear = smoothstep(.62, .3, veil) * (1. - .6 * gust);
+  c += stars(rd) * vec3(.7, .8, 1.) * .5 * clear * smoothstep(.05, .2, y);
+  // faint aurora curtain, partly veiled
+  if (y > .01){
+    vec2 ap = rd.xz / (y + .25);
+    float w = ap.x * .45 + 1.3 * noise2(ap * .25 + vec2(t * .03, 0.)) + t * .02;
+    float band = exp(-pow(ap.y - 1.6 - .5 * sin(w * 1.3), 2.) * 1.2);
+    float rays = .55 + .45 * noise2(vec2(w * 9., t * .35));
+    float hgt = smoothstep(.02, .18, y) * smoothstep(.75, .25, y);
+    vec3 ac = mix(vec3(.05, .55, .28), vec3(.35, .12, .5), smoothstep(.15, .45, y));
+    c += ac * band * rays * hgt * .07 * (.35 + .65 * clear);
+  }
+  // horizon lost in blowing snow
+  c += vec3(.014, .019, .03) * exp(-y * 9.) * (1. + .6 * gust) * (.75 + .5 * veil);
+  return c;
+}
+
+vec3 extraLight(vec3 p, vec3 n){ return vec3(0.); }
+
+// >>> SNOCAT BEGIN (shared verbatim with s03_base)
 // ============================================================ vehicle state ===
 vec3 gV;          // vehicle ground-center origin (world)
 vec2 gF2;         // heading (world xz), local +Z maps to this
 float gPitch, gRoll, gRock;
 mat2 gMP, gMR;
 
-vec3 vehPos(float t){ return vec3(-8.0 - .25 * sin(t * .4), 0., 50. - 5.1 * t); }
-
-void vehicleState(float t){
-  gV = vehPos(t);
-  float hdg = PI + .03 * sin(t * .5);
-  gF2 = vec2(sin(hdg), cos(hdg));
-  gPitch = .022 * sin(t * 2.1) + .01 * sin(t * 5.3 + 1.);
-  gRoll = .014 * sin(t * 1.7 + 1.);
-  gRock = .05 * sin(t * 2.6);
-  gMP = rot2(gPitch); gMR = rot2(gRoll);
-}
 // world vector -> local vector (no translation)
 vec3 toLoc(vec3 d){
   vec3 q = vec3(dot(d.xz, vec2(gF2.y, -gF2.x)), d.y, dot(d.xz, gF2));
@@ -92,22 +109,32 @@ vec2 snoCat(vec3 p){
   float body = min(hull, cab);
   // recessed side windows (cab and cargo box)
   vec3 wq = vec3(abs(p.x) - .97, p.y - 2.2, p.z);
-  float win = min(sdBox(wq - vec3(0., 0., .7), vec3(.035, .28, .5)), sdBox(wq - vec3(0., .04, -1.35), vec3(.035, .2, .72)));
+  float win = min(sdBox(wq - vec3(0., .02, .7), vec3(.035, .32, .52)), sdBox(wq - vec3(0., .04, -1.35), vec3(.035, .2, .72)));
   float bodyW = max(body, -win);
+  // rubbing strip along the hull
+  res = opU(res, vec2(sdBox(vec3(abs(p.x) - 1.01, p.y - 1.12, p.z), vec3(.03, .04, 2.5)), MB_BLACK));
   // fender lips over the pontoons
   float fend = sdBox(q - vec3(1.03, .98, 1.58), vec3(.2, .03, .78));
   res = opU(res, vec2(bodyW, -win > body ? MB_GLASS : MB_PAINT));
   res = opU(res, vec2(fend, MB_PAINT));
   // white roof cap
   res = opU(res, vec2(sdRoundBox(p - vec3(0., 2.75, -.6), vec3(1.01, .05, 1.99), .04), MB_ROOF));
+  vec3 lq = vec3(abs(p.x), p.y, p.z);
   if (p.y > 2.6){
   // light bar on two posts, four lamps
   float lb = sdBox(p - vec3(0., 2.9, 1.06), vec3(.95, .05, .06));
   lb = min(lb, sdBox(vec3(abs(p.x) - .8, p.y - 2.84, p.z - 1.06), vec3(.03, .06, .03)));
-  vec3 lq = vec3(abs(p.x), p.y, p.z);
   float rl = min(sdCylZ(lq - vec3(.28, 2.91, 1.14), .085, .06), sdCylZ(lq - vec3(.7, 2.91, 1.14), .085, .06));
   res = opU(res, vec2(lb, MB_BLACK));
   res = opU(res, vec2(rl, MB_ROOFLAMP));
+  // roof rack over the cargo box: side rails on posts, a couple of lashed crates
+  vec3 rr = vec3(abs(p.x) - .9, p.y - 2.98, p.z + 1.35);
+  float rack = sdBox(rr, vec3(.022, .022, 1.05));
+  rack = min(rack, sdBox(vec3(rr.x, rr.y + .09, mod(rr.z + .35, .7) - .35), vec3(.02, .09, .02)));
+  rack = max(rack, abs(rr.z) - 1.06);
+  rack = min(rack, sdRoundBox(p - vec3(.3, 2.95, -1.7), vec3(.35, .14, .45), .02));
+  rack = min(rack, sdRoundBox(p - vec3(-.35, 2.93, -.9), vec3(.3, .12, .3), .02));
+  res = opU(res, vec2(rack, MB_BLACK));
   }
   // headlights in the nose + bumper + grille bar
   float bump = 1e5;
@@ -196,18 +223,147 @@ vec3 lampsAt(vec3 x, vec3 n, vec3 rd){
   vec3 L; vec3 acc = vec3(0.);
   float vol = step(dot(n, n), .5);
   float i;
-  i = spotI(x, gHL0, gHD, .8, .965, L);
-  acc += HLCOL * 160. * i * mix(max(dot(n, L), 0.), hgPhase(dot(-L, rd), .55) * 4., vol);
-  i = spotI(x, gHL1, gHD, .8, .965, L);
-  acc += HLCOL * 160. * i * mix(max(dot(n, L), 0.), hgPhase(dot(-L, rd), .55) * 4., vol);
+  i = spotI(x, gHL0, gHD, .74, .965, L);
+  acc += HLCOL * 160. * i * mix(max(dot(n, L), 0.), hgPhase(dot(L, rd), .2) * 1.2, vol);
+  i = spotI(x, gHL1, gHD, .74, .965, L);
+  acc += HLCOL * 160. * i * mix(max(dot(n, L), 0.), hgPhase(dot(L, rd), .2) * 1.2, vol);
   i = spotI(x, gRL, gRD, .65, .93, L);
-  acc += RLCOL * 190. * i * mix(max(dot(n, L), 0.), hgPhase(dot(-L, rd), .45) * 4., vol);
+  acc += RLCOL * 190. * i * mix(max(dot(n, L), 0.), hgPhase(dot(L, rd), .2) * 1.2, vol);
+  // light-bar reflector spill: wide, lights the snow around the front half of the vehicle
+  vec3 dw = gRL - x; float d2w = dot(dw, dw); vec3 Lw = dw * inversesqrt(d2w);
+  acc += RLCOL * 14. * smoothstep(-.45, .3, dot(-Lw, gFW)) / (d2w + 2.) * mix(max(dot(n, Lw), 0.), .08, vol);
   // tail lights: weak, wide
   vec3 tc = (gTL0 + gTL1) * .5;
   vec3 dt = tc - x; float d2 = dot(dt, dt); vec3 Lt = dt * inversesqrt(d2);
   float back = smoothstep(-.2, .5, dot(-Lt, -gFW));
   acc += TLCOL * 1.6 * back / (d2 + 1.) * mix(max(dot(n, Lt), 0.), .25, vol);
   return acc;
+}
+
+// shade a vehicle hit (no fog). rol/rdl: ray in vehicle-local space, tv: hit distance
+vec3 shadeCat(vec3 ro, vec3 rd, vec3 rol, vec3 rdl, float tv, float mat, float t, float gust){
+  vec3 col;
+  vec3 pl = rol + rdl * tv;
+  vec3 nl = catNormal(pl);
+  vec3 pw = ro + rd * tv;
+  vec3 nw = toWld(nl);
+  // albedo and grime
+  float grime = fbm3lo(pl * 3.);
+  float low = smoothstep(1.3, .6, pl.y);
+  vec3 alb = vec3(.5);
+  float spec = .3, rough = 32.;
+  vec3 emis = vec3(0.);
+  if (mat == MB_PAINT){
+    alb = vec3(.42, .06, .025) * (.75 + .4 * grime);
+    alb = mix(alb, vec3(.14, .1, .08), low * .6 + .25 * smoothstep(.55, .75, grime));
+    // hood/fender snow and rime
+    float sn = smoothstep(.55, .9, nl.y) * smoothstep(.35, .6, noise3(pl * 4.));
+    alb = mix(alb, vec3(.75, .8, .88), sn);
+    // grille slats in the nose
+    if (nl.z > .7 && pl.y < 1.55 && pl.y > 1.08 && abs(pl.x) < .45) alb *= .25 + .75 * step(.5, fract(pl.y * 14.));
+    // stencilled unit number on the doors
+    spec = .5; rough = 48.;
+  } else if (mat == MB_ROOF){
+    alb = vec3(.7, .72, .74) * (.8 + .25 * grime); spec = .35;
+  } else if (mat == MB_TRACK){
+    vec3 qq = vec3(abs(pl.x), pl.y, abs(pl.z)) - vec3(1.08, .46, 1.58);
+    float fzz = abs(qq.z) - .54;
+    float ss = fzz < 0. ? qq.z : atan(qq.y, fzz) * .44 + .7;
+    float gr = smoothstep(.22, .0, abs(fract(ss * 7.2) - .5));
+    // dark rubber belt, bare steel cleat crests, snow packed between cleats low down
+    float cleat = step(.2, gr);
+    float caked = smoothstep(.62, .8, noise3(vec3(pl.x * 2., pl.y * 5., pl.z * 5.))) * (1. - cleat) * (.4 + .6 * low);
+    alb = mix(vec3(.03, .03, .033), vec3(.13, .13, .14), cleat);
+    alb = mix(alb, vec3(.55, .6, .68), caked * .7); spec = .5 + .5 * cleat; rough = 24.;
+  } else if (mat == MB_STEEL){
+    alb = vec3(.09, .085, .08) * (.7 + .6 * grime);
+    alb = mix(alb, vec3(.6, .65, .72), smoothstep(.5, .7, noise3(pl * 5.)) * .7); spec = .3;
+  } else if (mat == MB_BLACK){
+    alb = vec3(.035); spec = .5;
+  } else if (mat == MB_HEAD){
+    alb = vec3(.1); if (nl.z > .6) emis = HLCOL * 9. * (1. - .5 * smoothstep(.07, .13, length(vec2(abs(pl.x) - .7, pl.y - 1.36))));
+  } else if (mat == MB_ROOFLAMP){
+    alb = vec3(.1); if (nl.z > .6) emis = RLCOL * 7.;
+  } else if (mat == MB_TAIL){
+    alb = vec3(.15, .02, .02); if (nl.z < -.6) emis = TLCOL * 6.;
+  }
+  // windows: glass everywhere on the upper cab faces that face out (windshield/back included)
+  bool glass = mat == MB_GLASS;
+  if (mat == MB_PAINT){
+    if (nl.z > .8 && pl.y > 1.8 && pl.y < 2.58 && abs(pl.x) < .9 && abs(pl.x) > .04) glass = true;            // windshield (split)
+    if (nl.z < -.8 && pl.y > 1.95 && pl.y < 2.5 && abs(abs(pl.x) - .45) < .26 && pl.x > -.9 && !(pl.x > .25 && pl.x < .85)) glass = true; // rear window (door has ladder side)
+  }
+  vec3 V = -rd;
+  // --- lighting: sky ambient, bounce from its own lit snow pool, fog glow, spec glints
+  float ao = clamp(.35 + .65 * smoothstep(.3, 1.4, pl.y) + .3 * max(nl.y, 0.), 0., 1.);
+  vec3 E = SKYAMB * 2.6 * (.6 + .5 * nw.y) * ao;
+  vec3 pool = locToWorldP(vec3(0., 0., 7.));
+  vec3 dp = pool - pw; float dd = length(dp);
+  vec3 poolE = HLCOL * 1.9 / (1. + dd * dd * .03);
+  E += poolE * max(dot(nw, dp / dd) * .8 + .2, 0.) * ao;
+  E += HLCOL * .03 * (.3 + .7 * max(dot(nw, gFW), 0.));                    // glow of the lit spindrift
+  // bounce from the lamp-lit snow right around this point
+  vec3 gp = pw + nw * 1.2; gp.y = 0.;
+  E += lampsAt(gp, vec3(0., 1., 0.), rd) * .7 * .5 * (.55 - .45 * nw.y) * ao;                     // glow of lit spindrift
+  vec3 tc = (gTL0 + gTL1) * .5 - gFW * .6; vec3 dtl = tc - pw;            // tail light spill on the rear
+  E += TLCOL * .9 * max(dot(nw, normalize(dtl)), 0.) / (1. + dot(dtl, dtl) * 3.);
+  E += extraLight(pw, nw);
+  col = alb * E + emis;
+  // rim: the lit spindrift just behind the silhouette wraps around the edges
+  float rimF = pow(1. - max(dot(nw, V), 0.), 3.);
+  col += lampsAt(pw + rd * 1.2 + nw * .3, vec3(0.), rd) * rimF * .16 * (.3 + .7 * alb.r + spec);
+  // panel seams: doors, hood, cargo box
+  if (mat == MB_PAINT && abs(nl.x) > .7){
+    float seam = smoothstep(.012, .0, abs(pl.z - 1.22)) + smoothstep(.012, .0, abs(pl.z - .12)) * step(1.05, pl.y) + smoothstep(.012, .0, abs(pl.y - 1.66)) + smoothstep(.012, .0, abs(pl.z + 2.1)) * step(1.7, pl.y);
+    col *= 1. - .7 * clamp(seam, 0., 1.);
+    // door handle glint
+    col += vec3(.3) * smoothstep(.03, .0, length(vec2(pl.z - .25, pl.y - 1.78))) * (E.r + .02) * 2.;
+  }
+  vec3 R = reflect(rd, nw);
+  float fres = .04 + .96 * pow(1. - max(dot(nw, V), 0.), 5.);
+  vec3 env = skyCol(R, t, gust) * 4. + poolE * pow(max(dot(R, dp / dd), 0.), rough) * .6;
+  col += env * fres * spec * ao;
+  if (glass){
+    // dark glass reflecting the sky, and the dome-lit cab behind it with the crew in silhouette
+    vec3 inside = vec3(0.);
+    vec3 ip = pl; vec3 id = rdl;
+    vec3 dome = vec3(0., 2.55, .3);
+    float hitS = 1e5;
+    for (int k = 0; k < 2; k++){
+      float sx = k == 0 ? .44 : -.44;
+      float th = sphHit(ip, id, vec3(sx, 2.23, .72), .13);
+      if (th > 0.) hitS = min(hitS, th);
+      float tb = sphHit(ip, id, vec3(sx, 1.88, .78), .26);
+      if (tb > 0.) hitS = min(hitS, tb);
+    }
+    vec3 glow = vec3(1., .62, .3) * .08;
+    float edge = 1.;
+    if (hitS < 1e4){
+      vec3 hp = ip + id * hitS;
+      inside = vec3(.004, .003, .002) + glow * .25 * smoothstep(.3, 0., length(hp - dome) - .5);
+    } else {
+      vec3 far = ip + id * 1.2;
+      inside = glow * (1.2 / (1. + dot(far - dome, far - dome) * 1.5)) + vec3(.01, .006, .003);
+    }
+    float gf = .05 + .95 * pow(1. - max(dot(nw, V), 0.), 5.);
+    col = inside * (1. - gf) + (skyCol(R, t, gust) * 3. + poolE * .15 * pow(max(dot(R, dp / dd), 0.), 8.)) * gf;
+    col += vec3(.02, .025, .03) * smoothstep(.55, .75, noise3(pl * 18.)) * .3;   // frost on the glass
+  }
+  return col;
+}
+// <<< SNOCAT END
+
+// ============================================================ vehicle path ===
+vec3 vehPos(float t){ return vec3(-8.0 - .25 * sin(t * .4), 0., 50. - 5.1 * t); }
+
+void vehicleState(float t){
+  gV = vehPos(t);
+  float hdg = PI + .03 * sin(t * .5);
+  gF2 = vec2(sin(hdg), cos(hdg));
+  gPitch = .022 * sin(t * 2.1) + .01 * sin(t * 5.3 + 1.);
+  gRoll = .014 * sin(t * 1.7 + 1.);
+  gRock = .05 * sin(t * 2.6);
+  gMP = rot2(gPitch); gMR = rot2(gRoll);
 }
 
 // ============================================================ camera ===
@@ -231,31 +387,6 @@ void setupCam(float t){
 vec3 camDir(vec2 uv){ return normalize(uv.x * gRt + uv.y * gUp + gFocal * gFw); }
 vec3 proj(vec3 wp){ vec3 r = wp - gRo; float z = dot(r, gFw); return vec3(vec2(dot(r, gRt), dot(r, gUp)) / max(z, .001) * gFocal, z); }
 
-// ============================================================ sky ===
-const vec3 SKYAMB = vec3(.010, .014, .024);
-vec3 skyCol(vec3 rd, float t, float gust){
-  float y = max(rd.y, 0.);
-  vec3 c = mix(vec3(.004, .005, .009), vec3(.001, .0015, .003), smoothstep(0., .4, y));
-  // spindrift veil drifting across the sky
-  vec2 sp = rd.xz / (y + .08);
-  float veil = fbm2(vec2(sp.x * .5 + t * .9, sp.y * .5 + t * .15) + 3.);
-  float clear = smoothstep(.62, .3, veil) * (1. - .6 * gust);
-  c += stars(rd) * vec3(.7, .8, 1.) * .5 * clear * smoothstep(.05, .2, y);
-  // faint aurora curtain, partly veiled
-  if (y > .01){
-    vec2 ap = rd.xz / (y + .25);
-    float w = ap.x * .45 + 1.3 * noise2(ap * .25 + vec2(t * .03, 0.)) + t * .02;
-    float band = exp(-pow(ap.y - 1.6 - .5 * sin(w * 1.3), 2.) * 1.2);
-    float rays = .55 + .45 * noise2(vec2(w * 9., t * .35));
-    float hgt = smoothstep(.02, .18, y) * smoothstep(.75, .25, y);
-    vec3 ac = mix(vec3(.05, .55, .28), vec3(.35, .12, .5), smoothstep(.15, .45, y));
-    c += ac * band * rays * hgt * .07 * (.35 + .65 * clear);
-  }
-  // horizon lost in blowing snow
-  c += vec3(.014, .019, .03) * exp(-y * 9.) * (1. + .6 * gust) * (.75 + .5 * veil);
-  return c;
-}
-
 // ============================================================ render ===
 float fbm3o(vec2 p){ float a = .5, s = 0.; for (int i = 0; i < 3; i++){ s += a * noise2(p); p = p * 2.07 + 11.3; a *= .5; } return s; }
 
@@ -268,7 +399,7 @@ vec3 render(vec2 fc){
   setupCam(t);
   vec3 rd = camDir(uv);
   vec3 ro = gRo;
-  float dither = fract(52.9829189 * fract(dot(fc + float(iFrame % 32) * 5.588238, vec2(.06711056, .00583715))));
+  float dither = hash31(vec3(fc, float(iFrame % 97) + .5));
 
   float sig = .022 + .03 * gust;       // extinction of the blizzard
   vec3 fogC = vec3(.012, .016, .026) * (1. + .5 * gust);
@@ -282,111 +413,7 @@ vec3 render(vec2 fc){
 
   vec3 col;
   if (tv > 0.){
-    vec3 pl = rol + rdl * tv;
-    vec3 nl = catNormal(pl);
-    vec3 pw = ro + rd * tv;
-    vec3 nw = toWld(nl);
-    // albedo and grime
-    float grime = fbm3lo(pl * 3.);
-    float low = smoothstep(1.3, .6, pl.y);
-    vec3 alb = vec3(.5);
-    float spec = .3, rough = 32.;
-    vec3 emis = vec3(0.);
-    if (mat == MB_PAINT){
-      alb = vec3(.42, .06, .025) * (.75 + .4 * grime);
-      alb = mix(alb, vec3(.14, .1, .08), low * .6 + .25 * smoothstep(.55, .75, grime));
-      // hood/fender snow and rime
-      float sn = smoothstep(.55, .9, nl.y) * smoothstep(.35, .6, noise3(pl * 4.));
-      alb = mix(alb, vec3(.75, .8, .88), sn);
-      // grille slats in the nose
-      if (nl.z > .7 && pl.y < 1.55 && pl.y > 1.08 && abs(pl.x) < .45) alb *= .25 + .75 * step(.5, fract(pl.y * 14.));
-      // stencilled unit number on the doors
-      spec = .5; rough = 48.;
-    } else if (mat == MB_ROOF){
-      alb = vec3(.7, .72, .74) * (.8 + .25 * grime); spec = .35;
-    } else if (mat == MB_TRACK){
-      vec3 qq = vec3(abs(pl.x), pl.y, abs(pl.z)) - vec3(1.08, .46, 1.58);
-      float fzz = abs(qq.z) - .54;
-      float ss = fzz < 0. ? qq.z : atan(qq.y, fzz) * .44 + .7;
-      float gr = smoothstep(.22, .0, abs(fract(ss * 7.2) - .5));
-      // dark rubber belt, bare steel cleat crests, snow packed between cleats low down
-      float cleat = step(.2, gr);
-      float caked = smoothstep(.62, .8, noise3(vec3(pl.x * 2., pl.y * 5., pl.z * 5.))) * (1. - cleat) * (.4 + .6 * low);
-      alb = mix(vec3(.03, .03, .033), vec3(.13, .13, .14), cleat);
-      alb = mix(alb, vec3(.55, .6, .68), caked * .7); spec = .5 + .5 * cleat; rough = 24.;
-    } else if (mat == MB_STEEL){
-      alb = vec3(.09, .085, .08) * (.7 + .6 * grime);
-      alb = mix(alb, vec3(.6, .65, .72), smoothstep(.5, .7, noise3(pl * 5.)) * .7); spec = .3;
-    } else if (mat == MB_BLACK){
-      alb = vec3(.035); spec = .5;
-    } else if (mat == MB_HEAD){
-      alb = vec3(.1); if (nl.z > .6) emis = HLCOL * 9. * (1. - .5 * smoothstep(.07, .13, length(vec2(abs(pl.x) - .7, pl.y - 1.36))));
-    } else if (mat == MB_ROOFLAMP){
-      alb = vec3(.1); if (nl.z > .6) emis = RLCOL * 7.;
-    } else if (mat == MB_TAIL){
-      alb = vec3(.15, .02, .02); if (nl.z < -.6) emis = TLCOL * 3.;
-    }
-    // windows: glass everywhere on the upper cab faces that face out (windshield/back included)
-    bool glass = mat == MB_GLASS;
-    if (mat == MB_PAINT){
-      if (nl.z > .8 && pl.y > 1.8 && pl.y < 2.58 && abs(pl.x) < .9 && abs(pl.x) > .04) glass = true;            // windshield (split)
-      if (nl.z < -.8 && pl.y > 1.95 && pl.y < 2.5 && abs(abs(pl.x) - .45) < .26 && pl.x > -.9 && !(pl.x > .25 && pl.x < .85)) glass = true; // rear window (door has ladder side)
-    }
-    vec3 V = -rd;
-    // --- lighting: sky ambient, bounce from its own lit snow pool, fog glow, spec glints
-    float ao = clamp(.35 + .65 * smoothstep(.3, 1.4, pl.y) + .3 * max(nl.y, 0.), 0., 1.);
-    vec3 E = SKYAMB * 2.6 * (.6 + .5 * nw.y) * ao;
-    vec3 pool = locToWorldP(vec3(0., 0., 7.));
-    vec3 dp = pool - pw; float dd = length(dp);
-    vec3 poolE = HLCOL * 1.9 / (1. + dd * dd * .03);
-    E += poolE * max(dot(nw, dp / dd) * .8 + .2, 0.) * ao;
-    E += HLCOL * .03 * (.3 + .7 * max(dot(nw, gFW), 0.));                    // glow of the lit spindrift
-    // bounce from the lamp-lit snow right around this point
-    vec3 gp = pw + nw * 1.2; gp.y = 0.;
-    E += lampsAt(gp, vec3(0., 1., 0.), rd) * .7 * .5 * (.55 - .45 * nw.y) * ao;                     // glow of lit spindrift
-    vec3 tc = (gTL0 + gTL1) * .5 - gFW * .6; vec3 dtl = tc - pw;            // tail light spill on the rear
-    E += TLCOL * .9 * max(dot(nw, normalize(dtl)), 0.) / (1. + dot(dtl, dtl) * 3.);
-    col = alb * E + emis;
-    // rim: the lit spindrift just behind the silhouette wraps around the edges
-    float rimF = pow(1. - max(dot(nw, V), 0.), 3.);
-    col += lampsAt(pw + rd * 1.2 + nw * .3, vec3(0.), rd) * rimF * .16 * (.3 + .7 * alb.r + spec);
-    // panel seams: doors, hood, cargo box
-    if (mat == MB_PAINT && abs(nl.x) > .7){
-      float seam = smoothstep(.012, .0, abs(pl.z - 1.22)) + smoothstep(.012, .0, abs(pl.z - .12)) * step(1.05, pl.y) + smoothstep(.012, .0, abs(pl.y - 1.66)) + smoothstep(.012, .0, abs(pl.z + 2.1)) * step(1.7, pl.y);
-      col *= 1. - .7 * clamp(seam, 0., 1.);
-      // door handle glint
-      col += vec3(.3) * smoothstep(.03, .0, length(vec2(pl.z - .25, pl.y - 1.78))) * (E.r + .02) * 2.;
-    }
-    vec3 R = reflect(rd, nw);
-    float fres = .04 + .96 * pow(1. - max(dot(nw, V), 0.), 5.);
-    vec3 env = skyCol(R, t, gust) * 4. + poolE * pow(max(dot(R, dp / dd), 0.), rough) * .6;
-    col += env * fres * spec * ao;
-    if (glass){
-      // dark glass reflecting the sky, and the dome-lit cab behind it with the crew in silhouette
-      vec3 inside = vec3(0.);
-      vec3 ip = pl; vec3 id = rdl;
-      vec3 dome = vec3(0., 2.55, .3);
-      float hitS = 1e5;
-      for (int k = 0; k < 2; k++){
-        float sx = k == 0 ? .44 : -.44;
-        float th = sphHit(ip, id, vec3(sx, 2.23, .72), .13);
-        if (th > 0.) hitS = min(hitS, th);
-        float tb = sphHit(ip, id, vec3(sx, 1.88, .78), .26);
-        if (tb > 0.) hitS = min(hitS, tb);
-      }
-      vec3 glow = vec3(1., .62, .3) * .08;
-      float edge = 1.;
-      if (hitS < 1e4){
-        vec3 hp = ip + id * hitS;
-        inside = vec3(.004, .003, .002) + glow * .25 * smoothstep(.3, 0., length(hp - dome) - .5);
-      } else {
-        vec3 far = ip + id * 1.2;
-        inside = glow * (1.2 / (1. + dot(far - dome, far - dome) * 1.5)) + vec3(.01, .006, .003);
-      }
-      float gf = .05 + .95 * pow(1. - max(dot(nw, V), 0.), 5.);
-      col = inside * (1. - gf) + (skyCol(R, t, gust) * 3. + poolE * .15 * pow(max(dot(R, dp / dd), 0.), 8.)) * gf;
-      col += vec3(.02, .025, .03) * smoothstep(.55, .75, noise3(pl * 18.)) * .3;   // frost on the glass
-    }
+    col = shadeCat(ro, rd, rol, rdl, tv, mat, t, gust);
     // blowing snow in front of it
     float T = exp(-sig * tv);
     col = col * T + fogC * (1. - T);
@@ -398,7 +425,7 @@ vec3 render(vec2 fc){
     float h0 = fbm3o(sp * .5);
     vec2 e = vec2(.08, 0.);
     float hx = fbm3o((sp + e.xy) * .5), hz = fbm3o((sp + e.yx) * .5);
-    float bump = .9 * smoothstep(60., 3., tg);
+    float bump = .9 * smoothstep(40., 3., tg);
     vec3 n = normalize(vec3(-(hx - h0) * 7. * bump, 1., -(hz - h0) * 7. * bump));
     // fresh track ruts behind the vehicle
     vec3 pl = toLoc(p - gV);
@@ -410,25 +437,26 @@ vec3 render(vec2 fc){
     // contact shadow under the vehicle
     float foot = sdBox2(pl.xz, vec2(1.35, 2.6));
     float occ = mix(.25, 1., smoothstep(-.3, 1.2, foot));
-    vec3 E = SKYAMB * (1.1 + .9 * smoothstep(.35, .7, h0)) * occ;
+    vec3 E = SKYAMB * (1.2 + .5 * smoothstep(.35, .7, h0)) * occ;
     E += lampsAt(p, n, rd) * (1. - .5 * rut);
     col = alb * E * (1. - .35 * rut);
     // glitter in the beams
     float g = hash21(floor(p.xz * 40.));
-    if (g > .992) col += lampsAt(p + vec3(0., .05, 0.), vec3(0., 1., 0.), rd) * 1.5 * smoothstep(25., 3., tg);
+    if (g > .996) col += lampsAt(p + vec3(0., .05, 0.), vec3(0., 1., 0.), rd) * .5 * hash11(g * 17. + floor(t * 12.)) * smoothstep(25., 3., tg);
     // low drifting snow snaking along the ground
     vec2 dq = rot2(.2) * p.xz;
     float drift = fbm3o(vec2(dq.x * .15 - t * 2.2, dq.y * .9 + .4 * sin(dq.x * .2 + t)));
     drift = smoothstep(.4, .85, drift) * (.5 + .7 * gust) * smoothstep(1.5, 5., tg);
-    vec3 dl = SKYAMB * 1.8 + lampsAt(p + vec3(0., .25, 0.), vec3(0.), rd) * .5;
-    col = mix(col, dl, drift * .55);
+    vec3 dl = SKYAMB * 1.5 + lampsAt(p + vec3(0., .25, 0.), vec3(0.), rd) * .5;
+    col = mix(col, dl, drift * .35);
     float T = exp(-sig * tg);
     col = col * T + mix(fogC, skyCol(vec3(rd.x, .001, rd.z), t, gust), .6) * (1. - T);
   } else {
     col = skyCol(rd, t, gust);
   }
 
-  // ---------------- headlight cones through the blowing snow (few dithered samples)
+  // ---------------- headlight cones through the blowing snow
+  // equi-angular sampling around the lamp cluster keeps 10 samples nearly noise free
   {
     vec3 cc = locToWorldP(vec3(0., 1.4, 12.));
     float r = 16.;
@@ -437,17 +465,24 @@ vec3 render(vec2 fc){
       h = sqrt(h);
       float t0 = max(-b - h, 0.), t1 = min(-b + h, tHit);
       if (t1 > t0){
-        const int NS = 10;
-        float dt = (t1 - t0) / float(NS);
+        vec3 lc = locToWorldP(vec3(0., 1.8, 2.8));
+        float D = dot(lc - ro, rd);
+        float Dl = max(length(ro + rd * D - lc), .05);
+        float ta = atan((t0 - D) / Dl), tb = atan((t1 - D) / Dl);
+        const int NS = 16;
         vec3 acc = vec3(0.);
         for (int i = 0; i < NS; i++){
-          float ts = t0 + (float(i) + dither) * dt;
+          float u = (float(i) + dither) / float(NS);
+          float th = mix(ta, tb, u);
+          float ts = D + Dl * tan(th);
+          float w = (tb - ta) * (Dl * Dl + (ts - D) * (ts - D)) / Dl;   // 1/pdf
           vec3 x = ro + rd * ts;
-          float dens = .65 + .7 * noise3(vec3(x.x * .22 + t * 2.6, x.y * .6, x.z * .22 + t * .4));
+          float nn = noise3(vec3(x.x * .22 + t * 2.6, x.y * .6, x.z * .22 + t * .4));
+          float dens = .35 + 1.5 * nn * nn;
           dens *= 1. + 1.2 * exp(-x.y * 1.2);            // denser drift close to the ground
-          acc += lampsAt(x, vec3(0.), rd) * dens * exp(-sig * ts) * dt;
+          acc += lampsAt(x, vec3(0.), rd) * dens * exp(-sig * ts) * w;
         }
-        col += acc * (.013 + .016 * gust);
+        col += acc / float(NS) * (.013 + .016 * gust);
       }
     }
   }
@@ -466,11 +501,13 @@ vec3 render(vec2 fc){
       float cs = .075 * pow(d, .6);
       float L = wind * (1. / 48.) * .9;                // half streak length (shutter + wind shear)
       vec2 cell = vec2(2.4 * L + 3. * cs, cs);
-      vec2 c = vec2(az * d - t * wind, P.y + t * 1.3 + fi * 3.7);
+      float fall = 1.3 + .3 * fi;
+      vec2 c = vec2(az * d - t * wind, P.y + t * fall + fi * 3.7);
+      c = vec2(c.x, c.y + c.x * fall / wind);               // shear so streaks align with velocity
       c.y += .15 * sin(c.x * .6 + fi * 2.);           // eddies
       vec2 g = c / cell; vec2 id = floor(g); vec2 f = fract(g) - .5;
       float hh = hash21(id + fi * 37.1);
-      float dens = (.28 + .4 * gust) * (1. + 1.4 * exp(-P.y * 1.5));
+      float dens = (.24 + .35 * gust) * (1. + 1.4 * exp(-P.y * 1.5));
       if (hh < dens){
         vec2 o = (hash22(id + fi * 11.3) - .5) * vec2(cell.x - 2. * L, cell.y * .6);
         vec2 dd = f * cell - o;
@@ -480,8 +517,8 @@ vec3 render(vec2 fc){
         float sd = length(vec2(max(abs(dd.x) - Lk, 0.), dd.y));
         float a = smoothstep(rr + 1.5 * px, rr * .3, sd) * (rr + px) / (rr + px + Lk * .5);
         a *= 1. - .7 * pow(clamp(abs(dd.x) / (Lk + rr), 0., 1.), 2.);
-        vec3 lit = vec3(.02, .024, .03) + lampsAt(P, vec3(0.), rd) * 1.3;
-        col += lit * a * (.9 + 1.6 * hh) * (d < 1.2 ? .45 : 1.);
+        vec3 lit = vec3(.02, .024, .03) + lampsAt(P, vec3(0.), rd) * .6;
+        col += lit * a * (.9 + 1.6 * hh) * (d < 1.2 ? .45 : 1.) * (1. - .85 * smoothstep(3., 12., d));
       }
     }
   }
